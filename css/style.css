@@ -43,20 +43,24 @@ header {
 h1 {
   margin: 0;
   font-size: 1.25rem;
-  font-weight: 300;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .actions { display: flex; gap: 8px; }
 
 .bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   background: transparent;
   color: var(--encre);
   border: 1px solid var(--encre);
   border-radius: 999px;
-  padding: 7px 14px;
+  padding: 8px 14px;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
 }
@@ -92,17 +96,16 @@ h1 {
 /* ===== Pastilles ===== */
 .pastille {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
+  border: none;
   border-radius: 50%;
-  border: 2px solid var(--surface);
   color: var(--encre);
   font: 600 12px system-ui, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   transform: translate(-50%, -50%) scale(calc(1 / var(--echelle)));
 }
@@ -113,6 +116,8 @@ h1 {
 /* ===== Fiche remarque ===== */
 #fiche {
   width: min(92vw, 420px);
+  max-height: calc(100dvh - 32px);  /* jamais plus haute que l'espace visible */
+  overflow-y: auto;                 /* si elle est trop haute, elle défile */
   border: none;
   border-radius: 24px;
   padding: 24px;
@@ -125,7 +130,7 @@ h1 {
 #fiche h2 {
   margin: 0 0 20px;
   font-size: 1.4rem;
-  font-weight: 300;
+  font-weight: 600;
 }
 
 #fiche label {
@@ -172,9 +177,14 @@ h1 {
 }
 
 .boutonsFiche button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   font: inherit;
-  font-size: 0.9rem;
-  padding: 10px 18px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid var(--encre);
   background: transparent;
