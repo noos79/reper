@@ -24,6 +24,37 @@
     </div>
   </main>
 
+    <dialog id="fiche">
+    <form method="dialog">
+      <h2 id="titreFiche">Remarque</h2>
+
+      <label>Description
+        <textarea id="champTexte" rows="4" required></textarea>
+      </label>
+
+      <label>Statut
+        <select id="champStatut">
+          <option value="ouverte">Ouverte</option>
+          <option value="levee">Levée</option>
+        </select>
+      </label>
+
+      <label>Entreprise / lot
+        <input id="champEntreprise" type="text">
+      </label>
+
+      <label>Date de constat
+        <input id="champDate" type="date">
+      </label>
+
+      <div class="boutonsFiche">
+        <button value="enregistrer" class="principal">Enregistrer</button>
+        <button value="annuler" formnovalidate>Annuler</button>
+        <button value="supprimer" id="boutonSupprimer" formnovalidate class="danger">Supprimer</button>
+      </div>
+    </form>
+  </dialog>
+  
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
