@@ -9,8 +9,21 @@
 <body>
   <header>
     <h1>Suivi chantier</h1>
-    <label class="bouton">
-      Ouvrir un plan PDF
-      <input type="file" id="choixPdf" accept="application/pdf" hidden>
-    </label>
+    <div class="actions">
+      <button id="recadrer" class="bouton">Recadrer</button>
+      <label class="bouton">
+        Ouvrir un plan
+        <input type="file" id="choixPdf" accept="application/pdf" hidden>
+      </label>
+    </div>
   </header>
+
+  <main id="cadrePlan">
+    <div id="contenuPlan">
+      <canvas id="canevasPlan"></canvas>
+    </div>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

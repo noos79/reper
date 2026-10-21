@@ -1,9 +1,12 @@
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
-  background: #e8e8e8;
+  display: flex;
+  flex-direction: column;   /* en-tête en haut, plan dessous */
 }
 
 header {
@@ -18,20 +21,31 @@ header {
 
 h1 { font-size: 1.1rem; margin: 0; }
 
+.actions { display: flex; gap: 8px; }
+
 .bouton {
   background: white;
   color: #1f3a5f;
+  border: none;
+  font: inherit;
   padding: 8px 12px;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
 }
 
-main { padding: 8px; }
+#cadrePlan {
+  flex: 1;                  /* prend toute la hauteur restante */
+  overflow: hidden;         /* ce qui dépasse est caché */
+  touch-action: none;       /* le navigateur ne zoome plus la page entière : c'est nous qui gérons */
+  background: #e8e8e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;  /* plan centré */
+}
 
 #canevasPlan {
   display: block;
-  width: 100%;
   background: white;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
