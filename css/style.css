@@ -201,3 +201,72 @@ h1 {
   border-color: var(--aasa-orange);
   margin-right: auto;
 }
+
+/* ===== Écrans ===== */
+.ecran {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;   /* autorise le contenu à défiler au lieu de déborder */
+}
+
+.ecran[hidden] { display: none; }   /* sinon « display: flex » l'emporterait sur hidden */
+
+header h1 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;   /* un nom trop long se termine par « … » */
+}
+
+/* ===== Listes (projets, plans) ===== */
+.liste {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.liste li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--trait);
+}
+
+.elementListe {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--encre);
+  text-align: left;
+  cursor: pointer;
+}
+
+.titreElement  { font-size: 1rem; font-weight: 600; }
+.detailElement { font-size: 0.8rem; color: var(--encre-douce); }
+
+.supprimerElement {
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--encre-douce);
+  padding: 8px;
+  cursor: pointer;
+}
+
+.liste li.listeVide {
+  border: none;
+  padding: 32px 0;
+  color: var(--encre-douce);
+  font-size: 0.9rem;
+}

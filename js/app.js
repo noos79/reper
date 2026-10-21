@@ -1,64 +1,206 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
 import Panzoom from "https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/+esm";
+import Dexie from "https://cdn.jsdelivr.net/npm/dexie@4.0.10/+esm";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
+// ===== Base de données =====
+// Trois « tables ». Après « id », on liste les champs sur lesquels on fera des recherches.
+const db = new Dexie("suiviChantier");
+db.version(1).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId"
+});
+
+// Demande à Android de ne pas effacer nos données s'il manque de place
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist();
+}
+
 // ===== Réglages =====
 const QUALITE = 2;
 const PIXELS_MAX = 16_000_000;
-const DUREE_APPUI_LONG = 600;    // millisecondes
-const TOLERANCE_MOUVEMENT = 10;  // pixels : au-delà, c'est un déplacement, pas un appui
+const DUREE_APPUI_LONG = 600;
+const TOLERANCE_MOUVEMENT = 10;
+
+// ===== Raccourci =====
+const el = (id) => document.getElementById(id);
 
 // ===== Éléments de la page =====
-const choixPdf = document.getElementById("choixPdf");
-const canevas = document.getElementById("canevasPlan");
-const cadre = document.getElementById("cadrePlan");
-const contenu = document.getElementById("contenuPlan");
-const boutonRecadrer = document.getElementById("recadrer");
+const listeProjets = el("listeProjets");
+const listePlans = el("listePlans");
+const choixPdf = el("choixPdf");
+const canevas = el("canevasPlan");
+const cadre = el("cadrePlan");
+const contenu = el("contenuPlan");
 
-const fiche = document.getElementById("fiche");
-const titreFiche = document.getElementById("titreFiche");
-const champTexte = document.getElementById("champTexte");
-const champStatut = document.getElementById("champStatut");
-const champEntreprise = document.getElementById("champEntreprise");
-const champDate = document.getElementById("champDate");
-const boutonSupprimer = document.getElementById("boutonSupprimer");
+const fiche = el("fiche");
+const titreFiche = el("titreFiche");
+const champTexte = el("champTexte");
+const champStatut = el("champStatut");
+const champEntreprise = el("champEntreprise");
+const champDate = el("champDate");
+const boutonSupprimer = el("boutonSupprimer");
 
-// ===== Données (en mémoire vive pour l'instant) =====
-let remarques = [];
+// ===== État courant : ce qui est ouvert en ce moment =====
+let projetCourant = null;
+let planCourant = null;
+let remarques = [];           // remarques du plan affiché
 let remarqueEnCours = null;   // celle affichée dans la fiche
 let estNouvelle = false;
 
-// ===== Zoom et déplacement =====
+// ===== Navigation entre écrans =====
+function afficherEcran(idEcran) {
+  document.querySelectorAll(".ecran").forEach((ecran) => {
+    ecran.hidden = ecran.id !== idEcran;
+  });
+}
+
+el("retourProjets").addEventListener("click", afficherProjets);
+el("retourProjet").addEventListener("click", () => ouvrirProjet(projetCourant));
+
+// ===================================================================
+// ÉCRAN 1 : PROJETS
+// ===================================================================
+el("nouveauProjet").addEventListener("click", async () => {
+  const nom = prompt("Nom du projet :");
+  if (!nom || !nom.trim()) return;
+
+  await db.projets.add({
+    id: crypto.randomUUID(),
+    nom: nom.trim(),
+    creeLe: aujourdhui(),
+    dernierNumero: 0
+  });
+  await afficherProjets();
+});
+
+async function afficherProjets() {
+  const projets = await db.projets.orderBy("nom").toArray();
+
+  listeProjets.replaceChildren();   // vide la liste avant de la reconstruire
+  if (projets.length === 0) {
+    listeProjets.append(elementVide("Aucun projet. Crée le premier avec « Nouveau projet »."));
+  }
+  for (const projet of projets) {
+    listeProjets.append(elementListe(
+      projet.nom,
+      "Créé le " + formaterDate(projet.creeLe),
+      () => ouvrirProjet(projet),
+      () => supprimerProjet(projet)
+    ));
+  }
+  afficherEcran("ecranProjets");
+}
+
+async function supprimerProjet(projet) {
+  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans et remarques ?`)) return;
+
+  // Transaction : soit tout est supprimé, soit rien (jamais de remarques orphelines)
+  await db.transaction("rw", db.projets, db.plans, db.remarques, async () => {
+    await db.remarques.where("projetId").equals(projet.id).delete();
+    await db.plans.where("projetId").equals(projet.id).delete();
+    await db.projets.delete(projet.id);
+  });
+  await afficherProjets();
+}
+
+// ===================================================================
+// ÉCRAN 2 : UN PROJET ET SES PLANS
+// ===================================================================
+async function ouvrirProjet(projet) {
+  projetCourant = await db.projets.get(projet.id);   // version à jour depuis la base
+  el("titreProjet").textContent = projetCourant.nom;
+
+  const plans = await db.plans.where("projetId").equals(projetCourant.id).sortBy("nom");
+
+  listePlans.replaceChildren();
+  if (plans.length === 0) {
+    listePlans.append(elementVide("Aucun plan. Ajoute un PDF avec « Ajouter un plan »."));
+  }
+  for (const plan of plans) {
+    const ouvertes = await db.remarques
+      .where("planId").equals(plan.id)
+      .filter((r) => r.statut === "ouverte")
+      .count();
+    const detail = ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte");
+
+    listePlans.append(elementListe(
+      plan.nom,
+      detail,
+      () => ouvrirPlan(plan),
+      () => supprimerPlan(plan)
+    ));
+  }
+  afficherEcran("ecranProjet");
+}
+
+choixPdf.addEventListener("change", async () => {
+  const fichier = choixPdf.files[0];
+  choixPdf.value = "";   // permet de rechoisir le même fichier plus tard
+  if (!fichier) return;
+
+  const nomParDefaut = fichier.name.replace(/\.pdf$/i, "");
+  const nom = prompt("Nom du plan :", nomParDefaut);
+  if (nom === null) return;   // « Annuler »
+
+  await db.plans.add({
+    id: crypto.randomUUID(),
+    projetId: projetCourant.id,
+    nom: nom.trim() || nomParDefaut,
+    fichier,      // le PDF lui-même est stocké dans la base
+    page: 1
+  });
+  await ouvrirProjet(projetCourant);
+});
+
+async function supprimerPlan(plan) {
+  if (!confirm(`Supprimer le plan « ${plan.nom} » et ses remarques ?`)) return;
+
+  await db.transaction("rw", db.plans, db.remarques, async () => {
+    await db.remarques.where("planId").equals(plan.id).delete();
+    await db.plans.delete(plan.id);
+  });
+  await ouvrirProjet(projetCourant);
+}
+
+// ===================================================================
+// ÉCRAN 3 : UN PLAN ET SES REMARQUES
+// ===================================================================
 const panzoom = Panzoom(contenu, { minScale: 0.5, maxScale: 6, step: 0.3 });
 cadre.addEventListener("wheel", panzoom.zoomWithWheel);
-boutonRecadrer.addEventListener("click", () => panzoom.reset());
+el("recadrer").addEventListener("click", () => panzoom.reset());
 
-// À chaque zoom, on transmet le niveau au CSS pour garder les pastilles à taille fixe
 contenu.addEventListener("panzoomchange", (e) => {
   contenu.style.setProperty("--echelle", e.detail.scale);
 });
 
-// Empêche le menu contextuel du navigateur lors d'un appui long
 cadre.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// ===== Ouverture d'un PDF =====
-choixPdf.addEventListener("change", async () => {
-  const fichier = choixPdf.files[0];
-  if (!fichier) return;
+async function ouvrirPlan(plan) {
+  planCourant = plan;
+  el("titrePlan").textContent = plan.nom;
+
+  remarques = [];
+  dessinerPastilles();         // efface les pastilles du plan précédent
+
+  // L'écran doit être visible AVANT de dessiner : un élément caché a une taille nulle
+  afficherEcran("ecranPlan");
 
   try {
-    const donnees = await fichier.arrayBuffer();
+    const donnees = await plan.fichier.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: donnees }).promise;
-    const page = await pdf.getPage(1);
+    const page = await pdf.getPage(plan.page);
     await afficherPage(page);
-    remarques = [];          // nouveau plan : on repart à zéro (provisoire)
+
+    remarques = await db.remarques.where("planId").equals(plan.id).toArray();
     dessinerPastilles();
   } catch (erreur) {
-    alert("Impossible d'ouvrir ce PDF : " + erreur.message);
+    alert("Impossible d'ouvrir ce plan : " + erreur.message);
   }
-});
+}
 
 async function afficherPage(page) {
   const tailleOrigine = page.getViewport({ scale: 1 });
@@ -87,13 +229,13 @@ async function afficherPage(page) {
   await page.render({ canvasContext: canevas.getContext("2d"), viewport: vue }).promise;
 }
 
-// ===== Détection de l'appui long =====
+// ----- Appui long -----
 let minuteur = null;
 let pointDepart = null;
 
 contenu.addEventListener("pointerdown", (e) => {
-  if (!e.isPrimary) { annulerAppui(); return; }  // deuxième doigt = pincement, pas un appui
-  if (e.target !== canevas) return;               // appui sur une pastille : on ignore ici
+  if (!e.isPrimary) { annulerAppui(); return; }
+  if (e.target !== canevas) return;
   pointDepart = { x: e.clientX, y: e.clientY };
   minuteur = setTimeout(() => {
     minuteur = null;
@@ -104,7 +246,7 @@ contenu.addEventListener("pointerdown", (e) => {
 contenu.addEventListener("pointermove", (e) => {
   if (!minuteur) return;
   const distance = Math.hypot(e.clientX - pointDepart.x, e.clientY - pointDepart.y);
-  if (distance > TOLERANCE_MOUVEMENT) annulerAppui();   // le doigt bouge : c'est un déplacement
+  if (distance > TOLERANCE_MOUVEMENT) annulerAppui();
 });
 
 contenu.addEventListener("pointerup", annulerAppui);
@@ -115,21 +257,20 @@ function annulerAppui() {
   minuteur = null;
 }
 
-// ===== Création d'une remarque =====
+// ----- Création d'une remarque -----
 function poserRemarque(clientX, clientY) {
-  // Position du doigt convertie en proportion du plan (0 = bord gauche/haut, 1 = bord droit/bas)
   const rect = canevas.getBoundingClientRect();
   const x = (clientX - rect.left) / rect.width;
   const y = (clientY - rect.top) / rect.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) return;
 
-  if (navigator.vibrate) navigator.vibrate(30);   // petit retour tactile sur Android
-
-  const numero = remarques.reduce((max, r) => Math.max(max, r.numero), 0) + 1;
+  if (navigator.vibrate) navigator.vibrate(30);
 
   ouvrirFiche({
     id: crypto.randomUUID(),
-    numero,
+    projetId: projetCourant.id,
+    planId: planCourant.id,
+    numero: (projetCourant.dernierNumero || 0) + 1,   // numéro réservé, confirmé à l'enregistrement
     x,
     y,
     texte: "",
@@ -139,7 +280,7 @@ function poserRemarque(clientX, clientY) {
   }, true);
 }
 
-// ===== Fiche remarque =====
+// ----- Fiche remarque -----
 function ouvrirFiche(remarque, nouvelle) {
   remarqueEnCours = remarque;
   estNouvelle = nouvelle;
@@ -149,38 +290,48 @@ function ouvrirFiche(remarque, nouvelle) {
   champStatut.value = remarque.statut;
   champEntreprise.value = remarque.entreprise;
   champDate.value = remarque.date;
-  boutonSupprimer.hidden = nouvelle;   // pas de suppression d'une remarque pas encore créée
+  boutonSupprimer.hidden = nouvelle;
 
   fiche.returnValue = "";
   fiche.showModal();
 }
 
-fiche.addEventListener("close", () => {
-  const action = fiche.returnValue;   // la « value » du bouton cliqué
+fiche.addEventListener("close", async () => {
+  const action = fiche.returnValue;
+  const remarque = remarqueEnCours;
+  remarqueEnCours = null;
 
   if (action === "enregistrer") {
-    remarqueEnCours.texte = champTexte.value.trim();
-    remarqueEnCours.statut = champStatut.value;
-    remarqueEnCours.entreprise = champEntreprise.value.trim();
-    remarqueEnCours.date = champDate.value;
-    if (estNouvelle) remarques.push(remarqueEnCours);
-  }
+    remarque.texte = champTexte.value.trim();
+    remarque.statut = champStatut.value;
+    remarque.entreprise = champEntreprise.value.trim();
+    remarque.date = champDate.value;
 
-  if (action === "supprimer") {
-    if (confirm("Supprimer la remarque n° " + remarqueEnCours.numero + " ?")) {
-      remarques = remarques.filter((r) => r.id !== remarqueEnCours.id);
+    await db.remarques.put(remarque);   // « put » = créer ou mettre à jour
+
+    if (estNouvelle) {
+      remarques.push(remarque);
+      // Le numéro est définitivement consommé : il ne sera jamais réattribué
+      projetCourant.dernierNumero = remarque.numero;
+      await db.projets.update(projetCourant.id, { dernierNumero: remarque.numero });
     }
   }
 
-  remarqueEnCours = null;
+  if (action === "supprimer") {
+    if (confirm("Supprimer la remarque n° " + remarque.numero + " ?")) {
+      await db.remarques.delete(remarque.id);
+      remarques = remarques.filter((r) => r.id !== remarque.id);
+    }
+  }
+
   dessinerPastilles();
 });
 
-// ===== Affichage des pastilles =====
+// ----- Pastilles -----
 function dessinerPastilles() {
-  contenu.querySelectorAll(".pastille").forEach((p) => p.remove());   // on efface tout...
+  contenu.querySelectorAll(".pastille").forEach((p) => p.remove());
 
-  for (const r of remarques) {                                        // ...et on redessine
+  for (const r of remarques) {
     const pastille = document.createElement("button");
     pastille.className = "pastille panzoom-exclude " + r.statut;
     pastille.textContent = r.numero;
@@ -191,11 +342,50 @@ function dessinerPastilles() {
   }
 }
 
-// ===== Outils =====
+// ===================================================================
+// OUTILS
+// ===================================================================
+function elementListe(titre, detail, quandOuvrir, quandSupprimer) {
+  const li = document.createElement("li");
+
+  const ouvrir = document.createElement("button");
+  ouvrir.className = "elementListe";
+  const spanTitre = document.createElement("span");
+  spanTitre.className = "titreElement";
+  spanTitre.textContent = titre;
+  const spanDetail = document.createElement("span");
+  spanDetail.className = "detailElement";
+  spanDetail.textContent = detail;
+  ouvrir.append(spanTitre, spanDetail);
+  ouvrir.addEventListener("click", quandOuvrir);
+
+  const supprimer = document.createElement("button");
+  supprimer.className = "supprimerElement";
+  supprimer.textContent = "Supprimer";
+  supprimer.addEventListener("click", quandSupprimer);
+
+  li.append(ouvrir, supprimer);
+  return li;
+}
+
+function elementVide(message) {
+  const li = document.createElement("li");
+  li.className = "listeVide";
+  li.textContent = message;
+  return li;
+}
+
 function aujourdhui() {
-  // Date locale au format AAAA-MM-JJ (toISOString seul donnerait l'heure UTC,
-  // donc la veille entre minuit et 2 h en Belgique)
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
+
+function formaterDate(iso) {
+  if (!iso) return "";
+  const [annee, mois, jour] = iso.split("-");
+  return `${jour}/${mois}/${annee}`;
+}
+
+// ===== Démarrage =====
+afficherProjets();

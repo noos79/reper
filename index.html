@@ -2,29 +2,56 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Suivi chantier</title>
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
-  <header>
-    <h1>Suivi chantier</h1>
-    <div class="actions">
-      <button id="recadrer" class="bouton">Recadrer</button>
-      <label class="bouton">
-        Ouvrir un plan
-        <input type="file" id="choixPdf" accept="application/pdf" hidden>
-      </label>
-    </div>
-  </header>
 
-  <main id="cadrePlan">
-    <div id="contenuPlan">
-      <canvas id="canevasPlan"></canvas>
-    </div>
-  </main>
+  <!-- Écran 1 : liste des projets -->
+  <section id="ecranProjets" class="ecran">
+    <header>
+      <h1>Projets</h1>
+      <div class="actions">
+        <button id="nouveauProjet" class="bouton">Nouveau projet</button>
+      </div>
+    </header>
+    <ul id="listeProjets" class="liste"></ul>
+  </section>
 
-    <dialog id="fiche">
+  <!-- Écran 2 : un projet et ses plans -->
+  <section id="ecranProjet" class="ecran" hidden>
+    <header>
+      <button id="retourProjets" class="bouton" aria-label="Retour aux projets">←</button>
+      <h1 id="titreProjet"></h1>
+      <div class="actions">
+        <label class="bouton">
+          Ajouter un plan
+          <input type="file" id="choixPdf" accept="application/pdf" hidden>
+        </label>
+      </div>
+    </header>
+    <ul id="listePlans" class="liste"></ul>
+  </section>
+
+  <!-- Écran 3 : un plan et ses remarques -->
+  <section id="ecranPlan" class="ecran" hidden>
+    <header>
+      <button id="retourProjet" class="bouton" aria-label="Retour au projet">←</button>
+      <h1 id="titrePlan"></h1>
+      <div class="actions">
+        <button id="recadrer" class="bouton">Recadrer</button>
+      </div>
+    </header>
+    <main id="cadrePlan">
+      <div id="contenuPlan">
+        <canvas id="canevasPlan"></canvas>
+      </div>
+    </main>
+  </section>
+
+  <!-- Fiche remarque -->
+  <dialog id="fiche">
     <form method="dialog">
       <h2 id="titreFiche">Remarque</h2>
 
@@ -55,6 +82,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="js/app.js?v=3"></script>
+  <script type="module" src="js/app.js?v=4"></script>
 </body>
 </html>
