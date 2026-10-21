@@ -1,0 +1,37 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #e8e8e8;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #1f3a5f;
+  color: white;
+}
+
+h1 { font-size: 1.1rem; margin: 0; }
+
+.bouton {
+  background: white;
+  color: #1f3a5f;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+main { padding: 8px; }
+
+#canevasPlan {
+  display: block;
+  width: 100%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
