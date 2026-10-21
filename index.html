@@ -4,9 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Suivi chantier</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>Suivi chantier</h1>
-  <p>La chaîne fonctionne.</p>
+  <header>
+    <h1>Suivi chantier</h1>
+    <label class="bouton">
+      Ouvrir un plan PDF
+      <input type="file" id="choixPdf" accept="application/pdf" hidden>
+    </label>
+  </header>
+
+  <main>
+    <canvas id="canevasPlan"></canvas>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
