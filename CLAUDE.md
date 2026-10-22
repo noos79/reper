@@ -33,9 +33,9 @@ modification doit rester compréhensible et maintenable par lui.
   - JSZip `jszip@3.10.1` (export et import)
 - Hébergement : GitHub Pages (`https://<compte>.github.io/suivi-chantier/`).
 - Tests en local avec l'extension VS Code Live Server.
-- Structure : `index.html`, `css/style.css`, `js/app.js`.
-- **Contournement du cache** : `index.html` charge `css/style.css?v=N` et `js/app.js?v=N`. Augmenter `N`
-  à chaque modification du CSS ou du JS (un seul numéro commun).
+- Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`.
+- **Contournement du cache** : `index.html` charge `css/charte.css?v=N`, `css/style.css?v=N` et
+  `js/app.js?v=N`. Augmenter `N` à chaque modification du CSS ou du JS (un seul numéro commun).
 - Appareils cibles : **Android (Chrome) et PC Windows (Chrome)**. iPhone et iPad non testés en V1.
 
 ## Données
@@ -71,10 +71,34 @@ Trois écrans (`<section class="ecran">`, un seul visible à la fois via `hidden
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
-Style : **minimaliste**, inspiré de maquettes en niveaux de gris (fond gris clair, encre noire, boutons en
-contour arrondi, beaucoup d'air, titres en graisse 600). Pas de fioritures.
+Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
+**complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible
+au-dessus du clavier, car certaines tablettes ne réduisent pas la page.
 
-Palette AASA (variables CSS dans `:root`) :
+## Charte graphique
+
+Inspirée de l'en-tête des documents AASA : noir sur blanc, étiquettes en pastille noire, champs soulignés,
+grand trait de séparation. **Minimaliste**, beaucoup d'air, pas de fioritures.
+
+Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les utilise et n'écrit
+**jamais** une couleur, une police ou une épaisseur de trait en dur. Changer de charte = modifier
+`charte.css`. Les rapports PDF devront reprendre ces mêmes valeurs.
+
+- **Fond** blanc, encre noire.
+- **Polices**, fichiers dans `polices/` (licence SIL OFL jointe), jamais chargées depuis un site extérieur
+  (fonctionnement hors ligne) :
+  - Roboto Condensed **Regular (400)** pour le texte, **600** pour les titres ;
+  - **Dosis 400** pour les boutons et les étiquettes. Elle remplace Letter Gothic Std, police de la
+    charte papier, qui est payante (Adobe) et ne peut pas être diffusée.
+- **Boutons** : pastille noire, texte blanc, **minuscules**, bords arrondis à 50 % de la hauteur. Au
+  toucher, les couleurs s'inversent. Actions discrètes d'une ligne de liste (exporter, supprimer) :
+  texte gris seul, même police.
+- **Étiquettes** des champs (fiche) : même pastille noire que les boutons, au-dessus du champ.
+- **Champs** à remplir : simple trait noir fin en dessous ; trait turquoise pendant la saisie.
+- **Traits de séparation** : 4 points, noirs (sous l'en-tête des écrans, sous le titre de la fiche).
+- **Logo** : pas dans le dépôt (public). Pas de logo dans l'application pour l'instant.
+
+Palette AASA (couleurs de signalement, pas de décor) :
 - `#EE9227` orange → remarque **ouverte**
 - `#95C25B` vert → remarque **levée**
 - `#23A9A7` turquoise → accent (soulignement du champ en saisie)
@@ -83,10 +107,6 @@ Palette AASA (variables CSS dans `:root`) :
 Lisibilité en plein soleil : **jamais de texte blanc sur l'orange, le vert ou le turquoise** (contraste
 insuffisant) ; numéros des pastilles en noir. Pastilles : simple cercle de couleur avec le numéro, sans
 bordure ni ombre, taille constante quel que soit le zoom (variable CSS `--echelle`).
-
-Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
-**complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible
-au-dessus du clavier, car certaines tablettes ne réduisent pas la page.
 
 ## État d'avancement
 

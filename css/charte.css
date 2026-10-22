@@ -1,0 +1,64 @@
+/* =====================================================================
+   CHARTE GRAPHIQUE AASA
+   Toutes les valeurs de la charte (couleurs, polices, traits, formes).
+   style.css les utilise sans jamais écrire une couleur ou une police en dur.
+   Les règles d'usage sont décrites dans CLAUDE.md, section « Charte graphique ».
+   ===================================================================== */
+
+/* ===== Polices (fichiers dans le dépôt : elles fonctionnent hors ligne) ===== */
+
+/* Roboto Condensed : texte courant (Regular 400) et titres (600). Un seul fichier « variable »
+   contient toutes les graisses. Licence SIL OFL : polices/OFL-roboto-condensed.txt */
+@font-face {
+  font-family: "Roboto Condensed";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../polices/roboto-condensed.woff2") format("woff2");
+}
+
+/* Dosis : boutons et étiquettes. Remplace Letter Gothic Std Medium (police payante d'Adobe,
+   non diffusable). Fichier « variable » (graisses 200 à 800). Licence SIL OFL : polices/OFL-dosis.txt */
+@font-face {
+  font-family: "Dosis";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("../polices/dosis.woff2") format("woff2");
+}
+
+:root {
+  /* ----- Polices ----- */
+  --police-texte: "Roboto Condensed", "Arial Narrow", sans-serif;
+  --police-bouton: "Dosis", sans-serif;
+  --graisse-texte: 400;   /* Regular */
+  --graisse-titre: 600;
+  --graisse-bouton: 400;  /* Regular */
+
+  /* ----- Couleurs de base ----- */
+  --fond: #FFFFFF;
+  --surface: #FFFFFF;
+  --encre: #111111;
+  --encre-douce: #6E6E6E;
+  --trait: #D4D4D4;         /* séparations discrètes (listes) */
+
+  /* ----- Palette AASA ----- */
+  --aasa-turquoise-clair: #97D9DB;
+  --aasa-turquoise: #23A9A7;
+  --aasa-vert: #95C25B;
+  --aasa-orange: #EE9227;
+
+  /* ----- Rôles des couleurs ----- */
+  --statut-ouverte: var(--aasa-orange);
+  --statut-levee: var(--aasa-vert);
+  --accent: var(--aasa-turquoise);   /* soulignement du champ en saisie */
+
+  /* ----- Boutons et étiquettes : pastille noire, texte blanc ----- */
+  --bouton-fond: var(--encre);
+  --bouton-texte: var(--fond);
+  --arrondi-pilule: 999px;           /* bords arrondis à 50 % de la hauteur */
+
+  /* ----- Traits ----- */
+  --trait-separation: 4pt;           /* grand trait noir sous l'en-tête */
+  --trait-champ: 1px;                /* trait sous un champ à remplir */
+}

@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Suivi chantier</title>
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/charte.css?v=7">
+  <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
 
@@ -59,22 +60,22 @@
     <form method="dialog">
       <h2 id="titreFiche">Remarque</h2>
 
-      <label>Description
+      <label><span class="etiquette">description</span>
         <textarea id="champTexte" rows="4" required></textarea>
       </label>
 
-      <label>Statut
+      <label><span class="etiquette">statut</span>
         <select id="champStatut">
           <option value="ouverte">Ouverte</option>
           <option value="levee">Levée</option>
         </select>
       </label>
 
-      <label>Entreprise / lot
+      <label><span class="etiquette">entreprise / lot</span>
         <input id="champEntreprise" type="text">
       </label>
 
-      <label>Date de constat
+      <label><span class="etiquette">date de constat</span>
         <input id="champDate" type="date">
       </label>
 
@@ -86,6 +87,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/app.js?v=7"></script>
 </body>
 </html>
