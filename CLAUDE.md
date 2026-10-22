@@ -92,11 +92,11 @@ Fait :
 3. Zoom et déplacement (netteté suffisante pour situer une remarque).
 4. Pose, modification et suppression de remarques.
 5. Enregistrement sur l'appareil ; écrans Projets / Projet / Plan.
+6. **Export et import d'un projet** (fichier `.zip` : `projet.json` + `plans/<id>.pdf`). L'import
+   **remplace** un projet existant (reconnu par son `id`, pas par son nom) après confirmation, sans
+   fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`). Reste à essayer sur Android.
 
 À faire, dans cet ordre :
-6. **Export et import d'un projet** (fichier `.zip` : `projet.json` + `plans/<id>.pdf`). L'import
-   **remplace** un projet existant après confirmation, sans fusion. Format versionné
-   (`format: "suivi-chantier"`, `version: 1`).
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait).
    Les ajouter à l'export (passage au format d'export version 2).
 8. Liste réutilisable des entreprises / lots par projet.
