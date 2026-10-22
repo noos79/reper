@@ -34,6 +34,7 @@
   --graisse-texte: 400;   /* Regular */
   --graisse-titre: 600;
   --graisse-bouton: 400;  /* Regular */
+  --taille-texte: 0.95rem;   /* texte courant ; boutons et étiquettes à la même taille */
 
   /* ----- Couleurs de base ----- */
   --fond: #FFFFFF;
@@ -58,7 +59,12 @@
   --bouton-texte: var(--fond);
   --arrondi-pilule: 999px;           /* bords arrondis à 50 % de la hauteur */
   --bouton-danger-fond: var(--aasa-orange);   /* bouton « supprimer » de la fiche */
-  --bouton-danger-texte: var(--encre);
+  --bouton-danger-texte: var(--fond);         /* blanc, choix assumé malgré un contraste faible */
+  --bouton-danger-graisse: 600;
+
+  /* ----- Fond derrière le plan : quadrillage de petites croix grises ----- */
+  --motif-fond: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Cpath d='M11 6.5v9M6.5 11h9' stroke='%23A6A6A6' stroke-width='1'/%3E%3C/svg%3E");
+  --motif-fond-taille: 22px;
 
   /* ----- Traits ----- */
   --trait-separation: 4pt;           /* grand trait noir sous l'en-tête */
