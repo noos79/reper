@@ -92,8 +92,7 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
     charte papier, qui est payante (Adobe) et ne peut pas être diffusée.
 - **Boutons** : pastille noire, texte blanc, **minuscules**, bords arrondis à 50 % de la hauteur. Au
   toucher, les couleurs s'inversent. Même taille de texte que le texte courant (`--taille-texte`).
-  Exception : « supprimer » de la fiche en **orange, texte blanc en gras** (choix assumé malgré le
-  contraste faible, voir « Lisibilité » plus bas). Flèche de retour : dessin SVG (classe `fleche`),
+  Exception : « supprimer » de la fiche en **orange, texte noir en gras**. Flèche de retour : dessin SVG (classe `fleche`),
   trait épais, branches obliques longues.
   Actions discrètes d'une ligne de liste (exporter, supprimer) :
   texte gris seul, même police.
@@ -101,7 +100,7 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
 - **Champs** à remplir : sans trait, sauf le texte de la remarque (trait noir fin en dessous) ; trait
   turquoise pendant la saisie.
 - **Traits de séparation** : 4 points, noirs (sous l'en-tête des écrans, sous le titre de la fiche).
-- **Fond derrière le plan** : quadrillage de petites croix grises (« + »), comme sur les documents AASA
+- **Fond derrière le plan** : quadrillage de petites croix grises à trait très fin (« + »), comme sur les documents AASA
   (variable `--motif-fond`). Le plan reste sur fond blanc par-dessus.
 - **Logo** : pas dans le dépôt (public). Pas de logo dans l'application pour l'instant.
 
@@ -112,8 +111,7 @@ Palette AASA (couleurs de signalement, pas de décor) :
 - `#97D9DB` turquoise clair → en réserve (sélection, filtre actif)
 
 Lisibilité en plein soleil : **jamais de texte blanc sur l'orange, le vert ou le turquoise** (contraste
-insuffisant) ; numéros des pastilles en noir. **Seule exception**, voulue par Niko : le bouton
-« supprimer » de la fiche (blanc en gras sur orange). Pastilles : simple cercle de couleur avec le numéro, sans
+insuffisant) ; numéros des pastilles en noir. Pastilles : simple cercle de couleur avec le numéro, sans
 bordure ni ombre, taille constante quel que soit le zoom (variable CSS `--echelle`).
 
 ## État d'avancement

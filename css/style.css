@@ -192,7 +192,7 @@ h1 {
 
 .boutonsFiche button[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
 
-/* « Supprimer » à l'écart, à gauche, en orange (texte blanc en gras : exception voulue, voir CLAUDE.md) */
+/* « Supprimer » à l'écart, à gauche, en orange, texte noir en gras */
 .boutonsFiche .danger {
   margin-right: auto;
   background: var(--bouton-danger-fond);
