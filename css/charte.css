@@ -57,6 +57,8 @@
   --bouton-fond: var(--encre);
   --bouton-texte: var(--fond);
   --arrondi-pilule: 999px;           /* bords arrondis à 50 % de la hauteur */
+  --bouton-danger-fond: var(--aasa-orange);   /* bouton « supprimer » de la fiche */
+  --bouton-danger-texte: var(--encre);
 
   /* ----- Traits ----- */
   --trait-separation: 4pt;           /* grand trait noir sous l'en-tête */

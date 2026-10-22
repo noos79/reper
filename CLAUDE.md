@@ -91,10 +91,12 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
   - **Dosis 400** pour les boutons et les étiquettes. Elle remplace Letter Gothic Std, police de la
     charte papier, qui est payante (Adobe) et ne peut pas être diffusée.
 - **Boutons** : pastille noire, texte blanc, **minuscules**, bords arrondis à 50 % de la hauteur. Au
-  toucher, les couleurs s'inversent. Actions discrètes d'une ligne de liste (exporter, supprimer) :
+  toucher, les couleurs s'inversent. Exception : « supprimer » de la fiche en **orange, texte noir**.
+  Actions discrètes d'une ligne de liste (exporter, supprimer) :
   texte gris seul, même police.
 - **Étiquettes** des champs (fiche) : même pastille noire que les boutons, au-dessus du champ.
-- **Champs** à remplir : simple trait noir fin en dessous ; trait turquoise pendant la saisie.
+- **Champs** à remplir : sans trait, sauf le texte de la remarque (trait noir fin en dessous) ; trait
+  turquoise pendant la saisie.
 - **Traits de séparation** : 4 points, noirs (sous l'en-tête des écrans, sous le titre de la fiche).
 - **Logo** : pas dans le dépôt (public). Pas de logo dans l'application pour l'instant.
 

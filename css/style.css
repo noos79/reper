@@ -153,7 +153,7 @@ h1 {
   padding-block: 7px;
 }
 
-/* Champ à remplir : simple trait noir en dessous, comme sur la charte */
+/* Champs sans trait ; seul le texte de la remarque est souligné d'un trait noir */
 #fiche textarea,
 #fiche input,
 #fiche select {
@@ -162,13 +162,16 @@ h1 {
   color: var(--encre);
   padding: 6px 0;
   border: none;
-  border-bottom: var(--trait-champ) solid var(--encre);
+  border-bottom: 2px solid transparent;   /* réserve la place du trait de saisie : rien ne bouge au toucher */
   border-radius: 0;
   background: transparent;
   outline: none;
 }
 
-#fiche textarea { resize: vertical; }
+#fiche textarea {
+  resize: vertical;
+  border-bottom: var(--trait-champ) solid var(--encre);
+}
 
 #fiche textarea:focus,
 #fiche input:focus,
@@ -187,7 +190,13 @@ h1 {
 
 .boutonsFiche button[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
 
-.boutonsFiche .danger { margin-right: auto; }    /* « Supprimer » à l'écart, à gauche */
+/* « Supprimer » à l'écart, à gauche, en orange (texte noir : jamais de blanc sur l'orange) */
+.boutonsFiche .danger {
+  margin-right: auto;
+  background: var(--bouton-danger-fond);
+  border-color: var(--bouton-danger-fond);
+  color: var(--bouton-danger-texte);
+}
 
 /* ===== Écrans ===== */
 .ecran {
