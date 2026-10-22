@@ -82,7 +82,9 @@ Lisibilité en plein soleil : **jamais de texte blanc sur l'orange, le vert ou l
 insuffisant) ; numéros des pastilles en noir. Pastilles : simple cercle de couleur avec le numéro, sans
 bordure ni ombre, taille constante quel que soit le zoom (variable CSS `--echelle`).
 
-Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche.
+Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
+**complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible
+au-dessus du clavier, car certaines tablettes ne réduisent pas la page.
 
 ## État d'avancement
 
@@ -94,7 +96,7 @@ Fait :
 5. Enregistrement sur l'appareil ; écrans Projets / Projet / Plan.
 6. **Export et import d'un projet** (fichier `.zip` : `projet.json` + `plans/<id>.pdf`). L'import
    **remplace** un projet existant (reconnu par son `id`, pas par son nom) après confirmation, sans
-   fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`). Reste à essayer sur Android.
+   fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`).
 
 À faire, dans cet ordre :
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait).
