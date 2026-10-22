@@ -193,12 +193,74 @@ h1 {
 .boutonsFiche button[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
 
 /* « Supprimer » à l'écart, à gauche, en orange, texte noir en gras */
-.boutonsFiche .danger {
+.boutonsFiche .danger,
+.bouton.danger {
   margin-right: auto;
   background: var(--bouton-danger-fond);
   border-color: var(--bouton-danger-fond);
   color: var(--bouton-danger-texte);
   font-weight: var(--bouton-danger-graisse);
+}
+
+/* ===== Photos dans la fiche ===== */
+.champPhotos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.vignettes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vignettes:empty { display: none; }   /* pas d'espace vide sans photo */
+
+.vignette {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.vignette canvas { display: block; }
+
+/* ===== Écran d'annotation d'une photo (plein écran) ===== */
+#editeurPhoto {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: var(--fond);
+  color: var(--encre);
+}
+
+/* « display: flex » seulement quand il est ouvert : sinon il resterait visible */
+#editeurPhoto[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+#cadrePhoto {
+  flex: 1;
+  min-height: 0;
+  margin: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#canevasPhoto {
+  display: block;
+  touch-action: none;   /* le doigt dessine au lieu de faire défiler ou zoomer */
 }
 
 /* Flèche de retour dessinée (plus grasse et plus lisible que le caractère « ← ») */

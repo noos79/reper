@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Suivi chantier</title>
-  <link rel="stylesheet" href="css/charte.css?v=10">
-  <link rel="stylesheet" href="css/style.css?v=10">
+  <link rel="stylesheet" href="css/charte.css?v=11">
+  <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
 
@@ -79,6 +79,13 @@
         <input id="champDate" type="date">
       </label>
 
+      <div class="champPhotos">
+        <span class="etiquette">photos</span>
+        <div id="vignettes" class="vignettes"></div>
+        <button type="button" id="ajouterPhoto" class="bouton">ajouter une photo</button>
+        <input type="file" id="choixPhoto" accept="image/*" hidden>
+      </div>
+
       <div class="boutonsFiche">
         <button value="enregistrer" class="principal">Enregistrer</button>
         <button value="annuler" formnovalidate>Annuler</button>
@@ -87,6 +94,20 @@
     </form>
   </dialog>
 
-  <script type="module" src="js/app.js?v=10"></script>
+  <!-- Annotation d'une photo : trait rouge au doigt -->
+  <dialog id="editeurPhoto">
+    <header>
+      <button type="button" id="supprimerPhoto" class="bouton danger">supprimer</button>
+      <div class="actions">
+        <button type="button" id="annulerTrait" class="bouton">annuler le trait</button>
+        <button type="button" id="fermerEditeur" class="bouton">terminé</button>
+      </div>
+    </header>
+    <div id="cadrePhoto">
+      <canvas id="canevasPhoto"></canvas>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/app.js?v=11"></script>
 </body>
 </html>

@@ -53,6 +53,7 @@
   --statut-ouverte: var(--aasa-orange);
   --statut-levee: var(--aasa-vert);
   --accent: var(--aasa-turquoise);   /* soulignement du champ en saisie */
+  --trait-annotation: #E30613;       /* rouge des traits dessinés sur les photos */
 
   /* ----- Boutons et étiquettes : pastille noire, texte blanc ----- */
   --bouton-fond: var(--encre);

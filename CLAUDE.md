@@ -47,11 +47,18 @@ projets:   "id, nom"            // id, nom, creeLe, dernierNumero
 plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page
 remarques: "id, planId, projetId"
            // id, projetId, planId, numero, x, y, texte, statut, entreprise, date
+photos:    "id, remarqueId, planId, projetId"          (depuis la version 2 du schéma)
+           // id, projetId, planId, remarqueId, image (Blob JPEG), largeur, hauteur, traits, ajouteeLe
 ```
 
 Décisions à respecter :
-- Toute modification de schéma passe par une **nouvelle version** (`db.version(2)`), jamais en modifiant
-  la version 1 : des appareils ont déjà des données.
+- Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
+  une version existante : des appareils ont déjà des données. Version actuelle : **2**.
+- Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
+  **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
+  liste de points `[x, y]` **en proportion de l'image (0 à 1)**. Couleur : `--trait-annotation`.
+- Les photos d'une fiche ne sont écrites qu'à « enregistrer », dans la même transaction que la remarque ;
+  « annuler » (ou la fermeture de la fiche) abandonne les photos ajoutées.
 - Positions `x` et `y` des remarques **en proportion du plan (0 à 1)**, jamais en pixels.
 - Numérotation des remarques **continue par projet** ; un numéro n'est **jamais réutilisé**, même après
   suppression (compteur `dernierNumero` sur le projet, consommé à l'enregistrement). Elle sert à compter
@@ -59,7 +66,9 @@ Décisions à respecter :
   la suite sont normaux.
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
-- Suppressions en cascade dans une **transaction** (jamais de remarques orphelines).
+- Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 2**) + `plans/<id>.pdf` +
+  `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos) et 2.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
   bases séparées). Pas de synchronisation en V1.
 
@@ -70,6 +79,10 @@ Trois écrans (`<section class="ecran">`, un seul visible à la fois via `hidden
 2. **Projet** : liste des plans (avec le nombre de remarques ouvertes), ajout d'un PDF, suppression.
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
+
+Fiche remarque : zone « photos » (vignettes + « ajouter une photo », appareil photo ou galerie). Une
+vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
+doigt, « annuler le trait », « supprimer », « terminé ».
 
 Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
 **complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible

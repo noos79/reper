@@ -14,6 +14,13 @@ db.version(1).stores({
   plans: "id, projetId, nom",
   remarques: "id, planId, projetId"
 });
+// Version 2 : ajout des photos des remarques. Les données de la version 1 sont conservées.
+db.version(2).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -26,9 +33,16 @@ const PIXELS_MAX = 16_000_000;
 const DUREE_APPUI_LONG = 600;
 const TOLERANCE_MOUVEMENT = 10;
 
+// Photos : réduites à l'ajout pour ne pas alourdir la base et les exports
+const PHOTO_COTE_MAX = 1600;        // pixels, sur le plus grand côté
+const PHOTO_QUALITE = 0.85;         // qualité JPEG (0 à 1)
+const EPAISSEUR_TRAIT = 0.006;      // épaisseur des traits, en proportion du plus grand côté
+const COULEUR_TRAIT =
+  getComputedStyle(document.documentElement).getPropertyValue("--trait-annotation").trim();
+
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
-const VERSION_EXPORT = 1;
+const VERSION_EXPORT = 2;           // version 2 : ajout des photos
 
 // ===== Raccourci =====
 const el = (id) => document.getElementById(id);
@@ -49,6 +63,12 @@ const champStatut = el("champStatut");
 const champEntreprise = el("champEntreprise");
 const champDate = el("champDate");
 const boutonSupprimer = el("boutonSupprimer");
+const vignettes = el("vignettes");
+const choixPhoto = el("choixPhoto");
+
+const editeurPhoto = el("editeurPhoto");
+const cadrePhoto = el("cadrePhoto");
+const canevasPhoto = el("canevasPhoto");
 
 // ===== État courant : ce qui est ouvert en ce moment =====
 let projetCourant = null;
@@ -56,6 +76,10 @@ let planCourant = null;
 let remarques = [];           // remarques du plan affiché
 let remarqueEnCours = null;   // celle affichée dans la fiche
 let estNouvelle = false;
+let photosFiche = [];         // photos de la remarque affichée (copie de travail, enregistrée avec la fiche)
+let photosSupprimees = [];    // identifiants des photos à effacer à l'enregistrement
+let photoEnEdition = null;    // celle affichée dans l'écran d'annotation
+const imagesDecodees = new Map();   // images déjà préparées pour l'affichage (évite de les relire)
 
 // ===== Navigation entre écrans =====
 function afficherEcran(idEcran) {
@@ -102,12 +126,13 @@ async function afficherProjets() {
   afficherEcran("ecranProjets");
 }
 
-// ----- Export : un fichier .zip contenant projet.json et les PDF des plans -----
+// ----- Export : un fichier .zip contenant projet.json, les PDF des plans et les photos -----
 async function exporterProjet(projet) {
   try {
     const projetAJour = await db.projets.get(projet.id);
     const plans = await db.plans.where("projetId").equals(projet.id).toArray();
     const remarquesProjet = await db.remarques.where("projetId").equals(projet.id).toArray();
+    const photosProjet = await db.photos.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
@@ -117,11 +142,16 @@ async function exporterProjet(projet) {
       projet: projetAJour,
       // Chaque plan sans son « fichier » : le PDF est rangé à part dans le dossier plans/
       plans: plans.map(({ fichier, ...reste }) => reste),
-      remarques: remarquesProjet
+      remarques: remarquesProjet,
+      // De même, chaque photo sans son « image » : rangée à part dans le dossier photos/
+      photos: photosProjet.map(({ image, ...reste }) => reste)
     }, null, 2));
 
     for (const plan of plans) {
       zip.file(`plans/${plan.id}.pdf`, plan.fichier);
+    }
+    for (const photo of photosProjet) {
+      zip.file(`photos/${photo.id}.jpg`, photo.image);
     }
 
     const contenuZip = await zip.generateAsync({ type: "blob" });
@@ -161,16 +191,23 @@ async function importerProjet(fichierZip) {
   if (donnees.format !== FORMAT_EXPORT) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
-  if (donnees.version !== VERSION_EXPORT) {
+  // Version 1 (sans photos) et version 2 (avec photos) sont acceptées
+  if (donnees.version !== 1 && donnees.version !== 2) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
-  if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)) {
+  const photosImportees = donnees.photos || [];   // absentes en version 1
+  if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
+      || !Array.isArray(photosImportees)) {
     throw new Error("le fichier projet.json est incomplet.");
   }
   const idsPlans = new Set(plans.map((p) => p.id));
   if (remarquesImportees.some((r) => !idsPlans.has(r.planId))) {
     throw new Error("certaines remarques renvoient à un plan absent du fichier.");
+  }
+  const idsRemarques = new Set(remarquesImportees.map((r) => r.id));
+  if (photosImportees.some((p) => !idsRemarques.has(p.remarqueId))) {
+    throw new Error("certaines photos renvoient à une remarque absente du fichier.");
   }
 
   // Lecture des PDF AVANT la transaction : une transaction Dexie ne doit attendre que la base
@@ -187,30 +224,46 @@ async function importerProjet(fichierZip) {
   }
   const remarquesAImporter = remarquesImportees.map((r) => ({ ...r, projetId: projet.id }));
 
+  const photosAImporter = [];
+  for (const photo of photosImportees) {
+    const fichierPhoto = zip.file(`photos/${photo.id}.jpg`);
+    if (!fichierPhoto) throw new Error("une photo est absente du fichier.");
+    const octets = await fichierPhoto.async("blob");
+    photosAImporter.push({
+      ...photo,
+      projetId: projet.id,
+      image: new Blob([octets], { type: "image/jpeg" })
+    });
+  }
+
   const existant = await db.projets.get(projet.id);
   if (existant && !confirm(
     `Le projet « ${existant.nom} » existe déjà sur cet appareil.\n\n` +
     `Le remplacer par la version du fichier (exportée le ${formaterDate(donnees.exporteLe)}) ?\n` +
-    `Ses plans et remarques actuels seront définitivement supprimés.`
+    `Ses plans, remarques et photos actuels seront définitivement supprimés.`
   )) return;
 
   // Transaction : soit tout le projet est remplacé, soit rien ne change
-  await db.transaction("rw", db.projets, db.plans, db.remarques, async () => {
+  await db.transaction("rw", db.projets, db.plans, db.remarques, db.photos, async () => {
+    await db.photos.where("projetId").equals(projet.id).delete();
     await db.remarques.where("projetId").equals(projet.id).delete();
     await db.plans.where("projetId").equals(projet.id).delete();
     await db.projets.put(projet);
     await db.plans.bulkAdd(plansAImporter);
     await db.remarques.bulkAdd(remarquesAImporter);
+    await db.photos.bulkAdd(photosAImporter);
   });
 
-  alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ${remarquesImportees.length} remarque(s).`);
+  alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
+    `${remarquesImportees.length} remarque(s), ${photosImportees.length} photo(s).`);
 }
 
 async function supprimerProjet(projet) {
-  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans et remarques ?`)) return;
+  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans, remarques et photos ?`)) return;
 
-  // Transaction : soit tout est supprimé, soit rien (jamais de remarques orphelines)
-  await db.transaction("rw", db.projets, db.plans, db.remarques, async () => {
+  // Transaction : soit tout est supprimé, soit rien (jamais de remarques ni de photos orphelines)
+  await db.transaction("rw", db.projets, db.plans, db.remarques, db.photos, async () => {
+    await db.photos.where("projetId").equals(projet.id).delete();
     await db.remarques.where("projetId").equals(projet.id).delete();
     await db.plans.where("projetId").equals(projet.id).delete();
     await db.projets.delete(projet.id);
@@ -268,9 +321,10 @@ choixPdf.addEventListener("change", async () => {
 });
 
 async function supprimerPlan(plan) {
-  if (!confirm(`Supprimer le plan « ${plan.nom} » et ses remarques ?`)) return;
+  if (!confirm(`Supprimer le plan « ${plan.nom} », ses remarques et leurs photos ?`)) return;
 
-  await db.transaction("rw", db.plans, db.remarques, async () => {
+  await db.transaction("rw", db.plans, db.remarques, db.photos, async () => {
+    await db.photos.where("planId").equals(plan.id).delete();
     await db.remarques.where("planId").equals(plan.id).delete();
     await db.plans.delete(plan.id);
   });
@@ -392,7 +446,7 @@ function poserRemarque(clientX, clientY) {
 }
 
 // ----- Fiche remarque -----
-function ouvrirFiche(remarque, nouvelle) {
+async function ouvrirFiche(remarque, nouvelle) {
   remarqueEnCours = remarque;
   estNouvelle = nouvelle;
 
@@ -402,6 +456,11 @@ function ouvrirFiche(remarque, nouvelle) {
   champEntreprise.value = remarque.entreprise;
   champDate.value = remarque.date;
   boutonSupprimer.hidden = nouvelle;
+
+  // Copie de travail des photos : rien n'est écrit dans la base avant « enregistrer »
+  photosFiche = nouvelle ? [] : await db.photos.where("remarqueId").equals(remarque.id).toArray();
+  photosSupprimees = [];
+  afficherVignettes();
 
   fiche.returnValue = "";
   fiche.showModal();
@@ -418,24 +477,216 @@ fiche.addEventListener("close", async () => {
     remarque.entreprise = champEntreprise.value.trim();
     remarque.date = champDate.value;
 
-    await db.remarques.put(remarque);   // « put » = créer ou mettre à jour
+    // Transaction : la remarque, ses photos et le compteur sont enregistrés ensemble
+    await db.transaction("rw", db.remarques, db.photos, db.projets, async () => {
+      await db.remarques.put(remarque);   // « put » = créer ou mettre à jour
+      await db.photos.bulkDelete(photosSupprimees);
+      await db.photos.bulkPut(photosFiche);
+      if (estNouvelle) {
+        // Le numéro est définitivement consommé : il ne sera jamais réattribué
+        await db.projets.update(projetCourant.id, { dernierNumero: remarque.numero });
+      }
+    });
 
     if (estNouvelle) {
       remarques.push(remarque);
-      // Le numéro est définitivement consommé : il ne sera jamais réattribué
       projetCourant.dernierNumero = remarque.numero;
-      await db.projets.update(projetCourant.id, { dernierNumero: remarque.numero });
     }
   }
 
   if (action === "supprimer") {
-    if (confirm("Supprimer la remarque n° " + remarque.numero + " ?")) {
-      await db.remarques.delete(remarque.id);
+    if (confirm("Supprimer la remarque n° " + remarque.numero + " et ses photos ?")) {
+      await db.transaction("rw", db.remarques, db.photos, async () => {
+        await db.photos.where("remarqueId").equals(remarque.id).delete();
+        await db.remarques.delete(remarque.id);
+      });
       remarques = remarques.filter((r) => r.id !== remarque.id);
     }
   }
 
+  // Libère la mémoire des images affichées dans la fiche
+  for (const lecture of imagesDecodees.values()) lecture.then((image) => image.close());
+  imagesDecodees.clear();
+  photosFiche = [];
+  photosSupprimees = [];
+
   dessinerPastilles();
+});
+
+// ===================================================================
+// PHOTOS DES REMARQUES
+// ===================================================================
+// Une photo garde son image d'origine et, à part, ses traits d'annotation : l'annotation reste
+// modifiable. Chaque trait est une liste de points [x, y] en proportion de l'image (0 à 1).
+
+el("ajouterPhoto").addEventListener("click", () => choixPhoto.click());
+
+choixPhoto.addEventListener("change", async () => {
+  const fichier = choixPhoto.files[0];
+  choixPhoto.value = "";   // permet de reprendre une photo plus tard
+  if (!fichier) return;
+
+  try {
+    const { image, largeur, hauteur } = await reduirePhoto(fichier);
+    const photo = {
+      id: crypto.randomUUID(),
+      projetId: remarqueEnCours.projetId,
+      planId: remarqueEnCours.planId,
+      remarqueId: remarqueEnCours.id,
+      image,
+      largeur,
+      hauteur,
+      traits: [],
+      ajouteeLe: aujourdhui()
+    };
+    photosFiche.push(photo);
+    afficherVignettes();
+    ouvrirEditeur(photo);   // on peut annoter tout de suite
+  } catch (erreur) {
+    alert("Impossible d'ajouter cette photo (format non pris en charge ?) : " + erreur.message);
+  }
+});
+
+// Réduit la photo à PHOTO_COTE_MAX pixels et la convertit en JPEG
+async function reduirePhoto(fichier) {
+  // « from-image » : respecte l'orientation enregistrée par l'appareil photo
+  const source = await createImageBitmap(fichier, { imageOrientation: "from-image" });
+  const echelle = Math.min(1, PHOTO_COTE_MAX / Math.max(source.width, source.height));
+  const largeur = Math.round(source.width * echelle);
+  const hauteur = Math.round(source.height * echelle);
+
+  const canevasTravail = document.createElement("canvas");
+  canevasTravail.width = largeur;
+  canevasTravail.height = hauteur;
+  canevasTravail.getContext("2d").drawImage(source, 0, 0, largeur, hauteur);
+  source.close();
+
+  const image = await new Promise((resolu) => canevasTravail.toBlob(resolu, "image/jpeg", PHOTO_QUALITE));
+  return { image, largeur, hauteur };
+}
+
+// Image prête à dessiner (lue une seule fois, puis gardée tant que la fiche est ouverte).
+// On garde la lecture en cours (une « promesse ») : deux demandes simultanées ne lisent pas deux fois.
+function imageDe(photo) {
+  if (!imagesDecodees.has(photo.id)) {
+    imagesDecodees.set(photo.id, createImageBitmap(photo.image));
+  }
+  return imagesDecodees.get(photo.id);
+}
+
+// Dessine la photo et ses traits dans un canevas, à la taille affichée demandée
+async function dessinerPhoto(canevasCible, photo, largeurAffichee, hauteurAffichee) {
+  const finesse = window.devicePixelRatio || 1;
+  canevasCible.width = Math.round(largeurAffichee * finesse);
+  canevasCible.height = Math.round(hauteurAffichee * finesse);
+  canevasCible.style.width = largeurAffichee + "px";
+  canevasCible.style.height = hauteurAffichee + "px";
+
+  const ctx = canevasCible.getContext("2d");
+  ctx.drawImage(await imageDe(photo), 0, 0, canevasCible.width, canevasCible.height);
+  for (const trait of photo.traits) {
+    dessinerTrait(ctx, trait, canevasCible.width, canevasCible.height);
+  }
+}
+
+function dessinerTrait(ctx, trait, largeur, hauteur) {
+  ctx.strokeStyle = COULEUR_TRAIT;
+  ctx.lineWidth = EPAISSEUR_TRAIT * Math.max(largeur, hauteur);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(trait[0][0] * largeur, trait[0][1] * hauteur);
+  for (const [x, y] of trait) ctx.lineTo(x * largeur, y * hauteur);
+  if (trait.length === 1) ctx.lineTo(trait[0][0] * largeur + 0.1, trait[0][1] * hauteur);   // un simple point
+  ctx.stroke();
+}
+
+// ----- Vignettes dans la fiche -----
+const HAUTEUR_VIGNETTE = 72;
+
+function afficherVignettes() {
+  vignettes.replaceChildren();
+  for (const photo of photosFiche) {
+    const bouton = document.createElement("button");
+    bouton.type = "button";   // dans un formulaire, sinon le bouton fermerait la fiche
+    bouton.className = "vignette";
+    bouton.setAttribute("aria-label", "Ouvrir la photo");
+    const apercu = document.createElement("canvas");
+    bouton.append(apercu);
+    bouton.addEventListener("click", () => ouvrirEditeur(photo));
+    vignettes.append(bouton);
+
+    const largeur = HAUTEUR_VIGNETTE * photo.largeur / photo.hauteur;
+    dessinerPhoto(apercu, photo, largeur, HAUTEUR_VIGNETTE);
+  }
+}
+
+// ----- Écran d'annotation -----
+let traitEnCours = null;
+
+function ouvrirEditeur(photo) {
+  photoEnEdition = photo;
+  editeurPhoto.showModal();
+  redessinerEditeur();   // après showModal : l'écran doit être visible pour connaître sa taille
+}
+
+async function redessinerEditeur() {
+  const photo = photoEnEdition;
+  const echelle = Math.min(cadrePhoto.clientWidth / photo.largeur, cadrePhoto.clientHeight / photo.hauteur);
+  await dessinerPhoto(canevasPhoto, photo, photo.largeur * echelle, photo.hauteur * echelle);
+}
+
+// Position du doigt en proportion de l'image (0 à 1), arrondie pour garder des données légères
+function pointSurPhoto(e) {
+  const rect = canevasPhoto.getBoundingClientRect();
+  const borne = (v) => Math.round(Math.min(1, Math.max(0, v)) * 10000) / 10000;
+  return [borne((e.clientX - rect.left) / rect.width), borne((e.clientY - rect.top) / rect.height)];
+}
+
+canevasPhoto.addEventListener("pointerdown", (e) => {
+  if (!e.isPrimary) return;   // un deuxième doigt ne dessine pas
+  canevasPhoto.setPointerCapture(e.pointerId);
+  traitEnCours = [pointSurPhoto(e)];
+  photoEnEdition.traits.push(traitEnCours);
+  dessinerTrait(canevasPhoto.getContext("2d"), traitEnCours, canevasPhoto.width, canevasPhoto.height);
+});
+
+canevasPhoto.addEventListener("pointermove", (e) => {
+  if (!traitEnCours || !e.isPrimary) return;
+  const precedent = traitEnCours[traitEnCours.length - 1];
+  const point = pointSurPhoto(e);
+  traitEnCours.push(point);
+  // Dessine seulement le nouveau morceau : plus rapide que de tout redessiner
+  dessinerTrait(canevasPhoto.getContext("2d"), [precedent, point], canevasPhoto.width, canevasPhoto.height);
+});
+
+canevasPhoto.addEventListener("pointerup", () => { traitEnCours = null; });
+canevasPhoto.addEventListener("pointercancel", () => { traitEnCours = null; });
+
+el("annulerTrait").addEventListener("click", () => {
+  photoEnEdition.traits.pop();
+  redessinerEditeur();
+});
+
+el("supprimerPhoto").addEventListener("click", () => {
+  if (!confirm("Supprimer cette photo ?")) return;
+  photosFiche = photosFiche.filter((p) => p !== photoEnEdition);
+  photosSupprimees.push(photoEnEdition.id);
+  editeurPhoto.close();
+});
+
+el("fermerEditeur").addEventListener("click", () => editeurPhoto.close());
+
+// Tablette tournée : la photo est redessinée à la nouvelle taille de l'écran
+window.addEventListener("resize", () => {
+  if (photoEnEdition) redessinerEditeur();
+});
+
+// Fermeture (bouton « terminé », « supprimer » ou touche Échap) : mise à jour des vignettes
+editeurPhoto.addEventListener("close", () => {
+  photoEnEdition = null;
+  traitEnCours = null;
+  afficherVignettes();
 });
 
 // ----- Clavier : garder la fiche dans la partie visible de l'écran -----
