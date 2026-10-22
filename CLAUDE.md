@@ -54,7 +54,9 @@ Décisions à respecter :
   la version 1 : des appareils ont déjà des données.
 - Positions `x` et `y` des remarques **en proportion du plan (0 à 1)**, jamais en pixels.
 - Numérotation des remarques **continue par projet** ; un numéro n'est **jamais réutilisé**, même après
-  suppression (compteur `dernierNumero` sur le projet, consommé à l'enregistrement).
+  suppression (compteur `dernierNumero` sur le projet, consommé à l'enregistrement). Elle sert à compter
+  les remarques et à les situer sur le plan ; elle est **indépendante des locaux** et des **trous** dans
+  la suite sont normaux.
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques orphelines).
@@ -101,10 +103,42 @@ Fait :
 À faire, dans cet ordre :
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait).
    Les ajouter à l'export (passage au format d'export version 2).
-8. Liste réutilisable des entreprises / lots par projet.
-9. Rapport PDF : page de garde, une page par plan avec ses pastilles, liste des remarques avec vignettes ;
-   filtre (toutes, ouvertes seulement, une entreprise).
-10. Application installable et hors ligne (manifeste web, service worker).
+8. Application installable et hors ligne (manifeste web, service worker) : indispensable sur chantier
+   sans réseau (aujourd'hui, les bibliothèques sont téléchargées depuis le CDN à chaque ouverture).
+9. Structure du projet :
+   - niveaux ; locaux (niveau, n°, nom), importés depuis un fichier **CSV** (séparateur « ; », accents
+     d'Excel) plutôt qu'Excel (SheetJS sur le CDN : version ancienne avec failles connues) ;
+   - **lots** du marché et **CE** (corps d'exécution) : chaque CE appartient à un lot ; un lot compte
+     un ou plusieurs CE (ex. lot 1 Gros-œuvre → Démolitions, Égouttage, Structures, Toiture,
+     Menuiseries extérieures ; lot 3 Électricité → un seul CE Électricité) ;
+   - page **Intervenants** : une entreprise par lot (l'adjudicataire, destinataire habituel des
+     rapports) et, si besoin, un sous-traitant par CE ; chacun avec son adresse électronique
+     (facultative). Les entreprises n'apparaissent **ni dans la fiche ni dans la liste des remarques** ;
+   - un plan peut être lié à un niveau (facultatif) ;
+   - fiche : niveau → local (liste réduite au niveau, n° rempli automatiquement, sert seulement au tri
+     et au filtre) ; lot → CE (liste réduite au lot). Le champ libre actuel « Entreprise / lot »
+     disparaît : prévoir la reprise des valeurs déjà saisies.
+10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
+    Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
+    nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet
+    vers la bibliothèque : ajout seulement (les remarques de base sont conservées), doublons écartés,
+    confirmation pour les textes très proches. Export / import de la bibliothèque seule.
+11. Contours des locaux dessinés sur le plan (en proportion 0 à 1) ; à la pose d'une pastille, niveau,
+    n° et nom du local remplis automatiquement.
+12. Mise à jour d'un plan sans perdre les remarques : l'ancienne version reçoit un **indice** (A, B…)
+    et reste consultable, avec possibilité de la supprimer ; recalage par deux points (repères touchés
+    sur l'ancien puis le nouveau plan) ; déplacement d'une pastille au doigt ; contours redessinables ;
+    liste des remarques qui changent de local, à confirmer avant enregistrement.
+13. Plan annoté en PDF : pastilles dessinées sur le PDF d'origine (bibliothèque pdf-lib, à valider),
+    net à l'impression.
+14. Rapports PDF : rapport général (page de garde, une page par plan, liste des remarques avec
+    vignettes) et rapport par local (vue recadrée sur le contour, remarques du local) ; filtres
+    (toutes, ouvertes seulement, un lot, un CE, un niveau, un local). La page de garde reprend la liste des
+    entreprises concernées par les remarques du rapport.
+15. Note d'envoi du rapport aux entreprises concernées (celles dont l'adresse électronique est définie) :
+    par défaut l'entreprise du lot seule, avec la possibilité d'ajouter les sous-traitants des CE.
+    Limite : une page web ne peut pas envoyer un courriel elle-même ; piste à étudier : partage du PDF
+    vers l'application de messagerie (Android), adresses et texte à coller, ou envoi par un serveur (V2).
 
 Plus tard (V2) : sauvegarde automatique dans le nuage ou sur le serveur du bureau (éventuellement via VPN),
 synchronisation entre appareils, iPhone et iPad, renommage des projets et des plans, choix de la page
