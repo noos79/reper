@@ -438,6 +438,24 @@ fiche.addEventListener("close", async () => {
   dessinerPastilles();
 });
 
+// ----- Clavier : garder la fiche dans la partie visible de l'écran -----
+// « visualViewport » est la zone réellement visible, sans le clavier. Certains appareils
+// (tablettes notamment) ne réduisent pas la page à l'ouverture du clavier : on transmet donc
+// au CSS la position de cette zone pour y centrer la fiche.
+function ajusterFicheAuClavier() {
+  const zone = window.visualViewport;
+  const basCache = window.innerHeight - zone.offsetTop - zone.height;
+  fiche.style.setProperty("--haut-visible", zone.offsetTop + "px");
+  fiche.style.setProperty("--bas-cache", Math.max(0, basCache) + "px");
+  fiche.style.setProperty("--hauteur-visible", zone.height + "px");
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", ajusterFicheAuClavier);
+  window.visualViewport.addEventListener("scroll", ajusterFicheAuClavier);
+  ajusterFicheAuClavier();
+}
+
 // ----- Pastilles -----
 function dessinerPastilles() {
   contenu.querySelectorAll(".pastille").forEach((p) => p.remove());

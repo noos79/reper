@@ -116,7 +116,10 @@ h1 {
 /* ===== Fiche remarque ===== */
 #fiche {
   width: min(92vw, 420px);
-  max-height: calc(100dvh - 32px);  /* jamais plus haute que l'espace visible */
+  /* Centrée dans la zone visible au-dessus du clavier (variables remplies par app.js) */
+  top: var(--haut-visible, 0px);
+  bottom: var(--bas-cache, 0px);
+  max-height: calc(var(--hauteur-visible, 100dvh) - 32px);  /* jamais plus haute que l'espace visible */
   overflow-y: auto;                 /* si elle est trop haute, elle défile */
   border: none;
   border-radius: 24px;
@@ -191,6 +194,8 @@ h1 {
   color: var(--encre);
   cursor: pointer;
 }
+
+.boutonsFiche button[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
 
 .boutonsFiche .principal {
   background: var(--encre);
