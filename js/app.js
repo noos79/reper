@@ -65,6 +65,7 @@ const champDate = el("champDate");
 const boutonSupprimer = el("boutonSupprimer");
 const vignettes = el("vignettes");
 const choixPhoto = el("choixPhoto");
+const appareilPhoto = el("appareilPhoto");
 
 const editeurPhoto = el("editeurPhoto");
 const cadrePhoto = el("cadrePhoto");
@@ -519,11 +520,15 @@ fiche.addEventListener("close", async () => {
 // Une photo garde son image d'origine et, à part, ses traits d'annotation : l'annotation reste
 // modifiable. Chaque trait est une liste de points [x, y] en proportion de l'image (0 à 1).
 
+// Deux entrées : l'appareil photo directement, ou la galerie
+el("prendrePhoto").addEventListener("click", () => appareilPhoto.click());
 el("ajouterPhoto").addEventListener("click", () => choixPhoto.click());
+appareilPhoto.addEventListener("change", () => ajouterPhoto(appareilPhoto));
+choixPhoto.addEventListener("change", () => ajouterPhoto(choixPhoto));
 
-choixPhoto.addEventListener("change", async () => {
-  const fichier = choixPhoto.files[0];
-  choixPhoto.value = "";   // permet de reprendre une photo plus tard
+async function ajouterPhoto(entree) {
+  const fichier = entree.files[0];
+  entree.value = "";   // permet de reprendre une photo plus tard
   if (!fichier) return;
 
   try {
@@ -545,7 +550,7 @@ choixPhoto.addEventListener("change", async () => {
   } catch (erreur) {
     alert("Impossible d'ajouter cette photo (format non pris en charge ?) : " + erreur.message);
   }
-});
+}
 
 // Réduit la photo à PHOTO_COTE_MAX pixels et la convertit en JPEG
 async function reduirePhoto(fichier) {

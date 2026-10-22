@@ -80,7 +80,9 @@ Trois écrans (`<section class="ecran">`, un seul visible à la fois via `hidden
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
-Fiche remarque : zone « photos » (vignettes + « ajouter une photo », appareil photo ou galerie). Une
+Fiche remarque : zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
+sélecteur de photos des Android récents ne propose plus l'appareil photo : « prendre une photo » utilise
+`capture="environment"` pour l'ouvrir directement. Une
 vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
 doigt, « annuler le trait », « supprimer », « terminé ».
 

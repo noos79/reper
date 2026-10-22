@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Suivi chantier</title>
-  <link rel="stylesheet" href="css/charte.css?v=11">
-  <link rel="stylesheet" href="css/style.css?v=11">
+  <link rel="stylesheet" href="css/charte.css?v=12">
+  <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
 
@@ -82,7 +82,12 @@
       <div class="champPhotos">
         <span class="etiquette">photos</span>
         <div id="vignettes" class="vignettes"></div>
-        <button type="button" id="ajouterPhoto" class="bouton">ajouter une photo</button>
+        <div class="actions">
+          <button type="button" id="prendrePhoto" class="bouton">prendre une photo</button>
+          <button type="button" id="ajouterPhoto" class="bouton">galerie</button>
+        </div>
+        <!-- « capture » ouvre directement l'appareil photo (le sélecteur d'Android ne le propose plus) -->
+        <input type="file" id="appareilPhoto" accept="image/*" capture="environment" hidden>
         <input type="file" id="choixPhoto" accept="image/*" hidden>
       </div>
 
@@ -108,6 +113,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=11"></script>
+  <script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>
