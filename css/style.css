@@ -254,7 +254,7 @@ header h1 {
 .titreElement  { font-size: 1rem; font-weight: 600; }
 .detailElement { font-size: 0.8rem; color: var(--encre-douce); }
 
-.supprimerElement {
+.actionElement {
   background: none;
   border: none;
   font: inherit;

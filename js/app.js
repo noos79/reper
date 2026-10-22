@@ -1,6 +1,7 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
 import Panzoom from "https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/+esm";
 import Dexie from "https://cdn.jsdelivr.net/npm/dexie@4.0.10/+esm";
+import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
@@ -25,6 +26,10 @@ const PIXELS_MAX = 16_000_000;
 const DUREE_APPUI_LONG = 600;
 const TOLERANCE_MOUVEMENT = 10;
 
+// Identifiant et version du format des fichiers d'export
+const FORMAT_EXPORT = "suivi-chantier";
+const VERSION_EXPORT = 1;
+
 // ===== Raccourci =====
 const el = (id) => document.getElementById(id);
 
@@ -32,6 +37,7 @@ const el = (id) => document.getElementById(id);
 const listeProjets = el("listeProjets");
 const listePlans = el("listePlans");
 const choixPdf = el("choixPdf");
+const choixZip = el("choixZip");
 const canevas = el("canevasPlan");
 const cadre = el("cadrePlan");
 const contenu = el("contenuPlan");
@@ -89,10 +95,115 @@ async function afficherProjets() {
       projet.nom,
       "Créé le " + formaterDate(projet.creeLe),
       () => ouvrirProjet(projet),
-      () => supprimerProjet(projet)
+      () => supprimerProjet(projet),
+      () => exporterProjet(projet)
     ));
   }
   afficherEcran("ecranProjets");
+}
+
+// ----- Export : un fichier .zip contenant projet.json et les PDF des plans -----
+async function exporterProjet(projet) {
+  try {
+    const projetAJour = await db.projets.get(projet.id);
+    const plans = await db.plans.where("projetId").equals(projet.id).toArray();
+    const remarquesProjet = await db.remarques.where("projetId").equals(projet.id).toArray();
+
+    const zip = new JSZip();
+    zip.file("projet.json", JSON.stringify({
+      format: FORMAT_EXPORT,
+      version: VERSION_EXPORT,
+      exporteLe: aujourdhui(),
+      projet: projetAJour,
+      // Chaque plan sans son « fichier » : le PDF est rangé à part dans le dossier plans/
+      plans: plans.map(({ fichier, ...reste }) => reste),
+      remarques: remarquesProjet
+    }, null, 2));
+
+    for (const plan of plans) {
+      zip.file(`plans/${plan.id}.pdf`, plan.fichier);
+    }
+
+    const contenuZip = await zip.generateAsync({ type: "blob" });
+    telecharger(contenuZip, `${nomDeFichier(projetAJour.nom)}_${aujourdhui()}.zip`);
+  } catch (erreur) {
+    alert("Export impossible : " + erreur.message);
+  }
+}
+
+// ----- Import : remplace le projet s'il existe déjà sur l'appareil (sans fusion) -----
+choixZip.addEventListener("change", async () => {
+  const fichier = choixZip.files[0];
+  choixZip.value = "";   // permet de rechoisir le même fichier plus tard
+  if (!fichier) return;
+
+  try {
+    await importerProjet(fichier);
+  } catch (erreur) {
+    alert("Import impossible : " + erreur.message);
+  }
+  await afficherProjets();
+});
+
+async function importerProjet(fichierZip) {
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(fichierZip);
+  } catch {
+    throw new Error("ce fichier n'est pas un .zip valide.");
+  }
+
+  const fichierJson = zip.file("projet.json");
+  if (!fichierJson) throw new Error("ce fichier n'est pas un export de Suivi chantier.");
+  const donnees = JSON.parse(await fichierJson.async("string"));
+
+  // Vérifications : bon format, version connue, contenu complet
+  if (donnees.format !== FORMAT_EXPORT) {
+    throw new Error("ce fichier n'est pas un export de Suivi chantier.");
+  }
+  if (donnees.version !== VERSION_EXPORT) {
+    throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
+  }
+  const { projet, plans, remarques: remarquesImportees } = donnees;
+  if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)) {
+    throw new Error("le fichier projet.json est incomplet.");
+  }
+  const idsPlans = new Set(plans.map((p) => p.id));
+  if (remarquesImportees.some((r) => !idsPlans.has(r.planId))) {
+    throw new Error("certaines remarques renvoient à un plan absent du fichier.");
+  }
+
+  // Lecture des PDF AVANT la transaction : une transaction Dexie ne doit attendre que la base
+  const plansAImporter = [];
+  for (const plan of plans) {
+    const fichierPdf = zip.file(`plans/${plan.id}.pdf`);
+    if (!fichierPdf) throw new Error(`le PDF du plan « ${plan.nom} » est absent du fichier.`);
+    const octets = await fichierPdf.async("blob");
+    plansAImporter.push({
+      ...plan,
+      projetId: projet.id,
+      fichier: new Blob([octets], { type: "application/pdf" })
+    });
+  }
+  const remarquesAImporter = remarquesImportees.map((r) => ({ ...r, projetId: projet.id }));
+
+  const existant = await db.projets.get(projet.id);
+  if (existant && !confirm(
+    `Le projet « ${existant.nom} » existe déjà sur cet appareil.\n\n` +
+    `Le remplacer par la version du fichier (exportée le ${formaterDate(donnees.exporteLe)}) ?\n` +
+    `Ses plans et remarques actuels seront définitivement supprimés.`
+  )) return;
+
+  // Transaction : soit tout le projet est remplacé, soit rien ne change
+  await db.transaction("rw", db.projets, db.plans, db.remarques, async () => {
+    await db.remarques.where("projetId").equals(projet.id).delete();
+    await db.plans.where("projetId").equals(projet.id).delete();
+    await db.projets.put(projet);
+    await db.plans.bulkAdd(plansAImporter);
+    await db.remarques.bulkAdd(remarquesAImporter);
+  });
+
+  alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ${remarquesImportees.length} remarque(s).`);
 }
 
 async function supprimerProjet(projet) {
@@ -345,7 +456,8 @@ function dessinerPastilles() {
 // ===================================================================
 // OUTILS
 // ===================================================================
-function elementListe(titre, detail, quandOuvrir, quandSupprimer) {
+// « quandExporter » est facultatif : sans lui, pas de bouton « Exporter »
+function elementListe(titre, detail, quandOuvrir, quandSupprimer, quandExporter) {
   const li = document.createElement("li");
 
   const ouvrir = document.createElement("button");
@@ -359,13 +471,38 @@ function elementListe(titre, detail, quandOuvrir, quandSupprimer) {
   ouvrir.append(spanTitre, spanDetail);
   ouvrir.addEventListener("click", quandOuvrir);
 
+  li.append(ouvrir);
+
+  if (quandExporter) {
+    const exporter = document.createElement("button");
+    exporter.className = "actionElement";
+    exporter.textContent = "Exporter";
+    exporter.addEventListener("click", quandExporter);
+    li.append(exporter);
+  }
+
   const supprimer = document.createElement("button");
-  supprimer.className = "supprimerElement";
+  supprimer.className = "actionElement";
   supprimer.textContent = "Supprimer";
   supprimer.addEventListener("click", quandSupprimer);
 
-  li.append(ouvrir, supprimer);
+  li.append(supprimer);
   return li;
+}
+
+// Fait enregistrer un fichier par le navigateur (dossier Téléchargements)
+function telecharger(blob, nomFichier) {
+  const lien = document.createElement("a");
+  lien.href = URL.createObjectURL(blob);
+  lien.download = nomFichier;
+  lien.click();
+  // Libère la mémoire un peu plus tard, une fois le téléchargement lancé
+  setTimeout(() => URL.revokeObjectURL(lien.href), 10_000);
+}
+
+// Retire les caractères interdits dans un nom de fichier Windows ou Android
+function nomDeFichier(texte) {
+  return texte.replace(/[\\/:*?"<>|]/g, "-").trim() || "projet";
 }
 
 function elementVide(message) {
