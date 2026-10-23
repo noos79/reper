@@ -44,6 +44,8 @@ modification doit rester compréhensible et maintenable par lui.
   à la deuxième ouverture. Quand un nouveau service worker prend la main, il envoie sa `VERSION` aux
   pages ouvertes ; si elle diffère du `?v=N` de `app.js`, un bandeau « nouvelle version disponible »
   propose de recharger.
+- **Installation** : bouton « installer » sur l'écran Projets, caché par défaut, affiché seulement quand
+  Chrome envoie `beforeinstallprompt` (application installable et pas encore installée).
 - Appareils cibles : **Android (Chrome) et PC Windows (Chrome)**. iPhone et iPad non testés en V1.
 
 ## Données
@@ -115,7 +117,9 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
     charte papier, qui est payante (Adobe) et ne peut pas être diffusée.
 - **Boutons** : pastille noire, texte blanc, **minuscules**, bords arrondis à 50 % de la hauteur. Au
   toucher, les couleurs s'inversent. Même taille de texte que le texte courant (`--taille-texte`).
-  Exception : « supprimer » de la fiche en **orange, texte noir en gras**. Flèche de retour : dessin SVG (classe `fleche`),
+  Exception : « supprimer » de la fiche en **orange, texte noir en gras**. Boutons **secondaires**
+  (classe `secondaire` : « prendre une photo », « galerie », « installer ») : couleurs inversées, fond blanc, bordure et
+  texte noirs. Flèche de retour : dessin SVG (classe `fleche`),
   trait épais, branches obliques longues.
   Actions discrètes d'une ligne de liste (exporter, supprimer) :
   texte gris seul, même police.

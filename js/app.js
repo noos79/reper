@@ -815,3 +815,25 @@ if ("serviceWorker" in navigator) {
   };
   el("recharger").addEventListener("click", () => location.reload());
 }
+
+// ----- Bouton « installer » -----
+// Chrome signale (« beforeinstallprompt ») que l'application peut être installée. On garde
+// cette demande pour l'afficher au moment où l'on touche le bouton.
+const boutonInstaller = el("installer");
+let demandeInstallation = null;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();   // pas de proposition automatique de Chrome : on passe par notre bouton
+  demandeInstallation = e;
+  boutonInstaller.hidden = false;
+});
+
+boutonInstaller.addEventListener("click", async () => {
+  boutonInstaller.hidden = true;
+  demandeInstallation.prompt();          // fenêtre d'installation de Chrome
+  await demandeInstallation.userChoice;  // installée ou refusée : la demande ne sert qu'une fois
+  demandeInstallation = null;
+});
+
+// Application installée (par notre bouton ou par le menu de Chrome) : le bouton n'a plus lieu d'être
+window.addEventListener("appinstalled", () => { boutonInstaller.hidden = true; });

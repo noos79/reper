@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=13">
-  <link rel="stylesheet" href="css/style.css?v=13">
+  <link rel="stylesheet" href="css/charte.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -17,6 +17,8 @@
     <header>
       <h1>Projets</h1>
       <div class="actions">
+        <!-- Visible seulement quand Chrome permet d'installer l'application -->
+        <button id="installer" class="bouton secondaire" hidden>installer</button>
         <label class="bouton">
           Importer
           <input type="file" id="choixZip" accept=".zip,application/zip,application/x-zip-compressed" hidden>
@@ -86,8 +88,8 @@
         <span class="etiquette">photos</span>
         <div id="vignettes" class="vignettes"></div>
         <div class="actions">
-          <button type="button" id="prendrePhoto" class="bouton">prendre une photo</button>
-          <button type="button" id="ajouterPhoto" class="bouton">galerie</button>
+          <button type="button" id="prendrePhoto" class="bouton secondaire">prendre une photo</button>
+          <button type="button" id="ajouterPhoto" class="bouton secondaire">galerie</button>
         </div>
         <!-- « capture » ouvre directement l'appareil photo (le sélecteur d'Android ne le propose plus) -->
         <input type="file" id="appareilPhoto" accept="image/*" capture="environment" hidden>
@@ -122,6 +124,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=13"></script>
+  <script type="module" src="js/app.js?v=14"></script>
 </body>
 </html>

@@ -62,6 +62,19 @@ h1 {
   color: var(--bouton-fond);
 }
 
+/* Bouton secondaire (photos de la fiche) : couleurs inversées, fond blanc, bordure et texte noirs */
+.bouton.secondaire {
+  background: var(--bouton-texte);
+  color: var(--bouton-fond);
+}
+
+.bouton.secondaire:active {
+  background: var(--bouton-fond);
+  color: var(--bouton-texte);
+}
+
+.bouton[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
+
 /* ===== Plan ===== */
 #cadrePlan {
   flex: 1;
