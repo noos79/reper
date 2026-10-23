@@ -33,9 +33,17 @@ modification doit rester compréhensible et maintenable par lui.
   - JSZip `jszip@3.10.1` (export et import)
 - Hébergement : GitHub Pages (`https://<compte>.github.io/suivi-chantier/`).
 - Tests en local avec l'extension VS Code Live Server.
-- Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`.
+- Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`,
+  `manifest.webmanifest`, `sw.js` (service worker, à la racine pour couvrir tout le site), `icones/`.
 - **Contournement du cache** : `index.html` charge `css/charte.css?v=N`, `css/style.css?v=N` et
-  `js/app.js?v=N`. Augmenter `N` à chaque modification du CSS ou du JS (un seul numéro commun).
+  `js/app.js?v=N`. Augmenter `N` à chaque modification du CSS ou du JS (un seul numéro commun),
+  **et le même numéro dans `const VERSION` de `sw.js`** : sinon le service worker continue de servir
+  l'ancienne copie. Tout nouveau fichier de l'application doit être ajouté à la liste `FICHIERS` de `sw.js`.
+- **Hors ligne** (`sw.js`) : la page passe par le réseau d'abord (3 s au plus, puis copie en cache) ;
+  tous les autres fichiers sont servis depuis le cache. Une mise à jour apparaît donc au plus tard
+  à la deuxième ouverture. Quand un nouveau service worker prend la main, il envoie sa `VERSION` aux
+  pages ouvertes ; si elle diffère du `?v=N` de `app.js`, un bandeau « nouvelle version disponible »
+  propose de recharger.
 - Appareils cibles : **Android (Chrome) et PC Windows (Chrome)**. iPhone et iPad non testés en V1.
 
 ## Données
@@ -140,12 +148,12 @@ Fait :
 6. **Export et import d'un projet** (fichier `.zip` : `projet.json` + `plans/<id>.pdf`). L'import
    **remplace** un projet existant (reconnu par son `id`, pas par son nom) après confirmation, sans
    fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`).
+7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait),
+   ajoutées à l'export (format d'export version 2).
+8. Application installable et hors ligne (manifeste web, service worker, icônes provisoires : pastille
+   orange « 1 »). **À vérifier sur Android** : installation, puis ouverture en mode avion.
 
 À faire, dans cet ordre :
-7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait).
-   Les ajouter à l'export (passage au format d'export version 2).
-8. Application installable et hors ligne (manifeste web, service worker) : indispensable sur chantier
-   sans réseau (aujourd'hui, les bibliothèques sont téléchargées depuis le CDN à chaque ouverture).
 9. Structure du projet :
    - niveaux ; locaux (niveau, n°, nom), importés depuis un fichier **CSV** (séparateur « ; », accents
      d'Excel) plutôt qu'Excel (SheetJS sur le CDN : version ancienne avec failles connues) ;

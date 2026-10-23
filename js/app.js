@@ -800,3 +800,18 @@ function formaterDate(iso) {
 
 // ===== Démarrage =====
 afficherProjets();
+
+// Fonctionnement hors ligne : le service worker garde une copie de l'application (voir sw.js)
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js");
+
+  // Le service worker annonce sa version quand il prend la main. Si elle diffère de celle de
+  // cette page (le « ?v=N » de app.js), une nouvelle version a été reçue : on propose de recharger.
+  const versionPage = new URL(import.meta.url).searchParams.get("v");
+  navigator.serviceWorker.onmessage = (e) => {
+    if (e.data?.type === "version" && String(e.data.version) !== versionPage) {
+      el("bandeauMiseAJour").hidden = false;
+    }
+  };
+  el("recharger").addEventListener("click", () => location.reload());
+}

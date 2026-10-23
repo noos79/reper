@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Suivi chantier</title>
-  <link rel="stylesheet" href="css/charte.css?v=12">
-  <link rel="stylesheet" href="css/style.css?v=12">
+  <!-- Application installable : nom, icônes, ouverture en plein écran -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#FFFFFF">
+  <link rel="stylesheet" href="css/charte.css?v=13">
+  <link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
@@ -113,6 +116,12 @@
     </div>
   </dialog>
 
-  <script type="module" src="js/app.js?v=12"></script>
+  <!-- Nouvelle version de l'application reçue en arrière-plan (voir sw.js) -->
+  <div id="bandeauMiseAJour" class="bandeau" hidden>
+    <span>Nouvelle version disponible</span>
+    <button type="button" id="recharger" class="bouton">recharger</button>
+  </div>
+
+  <script type="module" src="js/app.js?v=13"></script>
 </body>
 </html>
