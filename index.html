@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=14">
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/charte.css?v=15">
+  <link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
 
@@ -69,31 +69,35 @@
         <textarea id="champTexte" rows="4" required></textarea>
       </label>
 
-      <label><span class="etiquette">statut</span>
-        <select id="champStatut">
-          <option value="ouverte">Ouverte</option>
-          <option value="levee">Levée</option>
-        </select>
-      </label>
+      <!-- Grille à deux colonnes : étiquettes à gauche (toutes à la largeur de la plus longue),
+           champs à droite sur la même ligne ; les photos s'affichent sous leur étiquette -->
+      <div class="grilleFiche">
+        <label><span class="etiquette">statut</span>
+          <select id="champStatut">
+            <option value="ouverte">Ouverte</option>
+            <option value="levee">Levée</option>
+          </select>
+        </label>
 
-      <label><span class="etiquette">entreprise / lot</span>
-        <input id="champEntreprise" type="text">
-      </label>
+        <label><span class="etiquette">chapitre</span>
+          <input id="champEntreprise" type="text">
+        </label>
 
-      <label><span class="etiquette">date de constat</span>
-        <input id="champDate" type="date">
-      </label>
+        <label><span class="etiquette">date</span>
+          <input id="champDate" type="date">
+        </label>
 
-      <div class="champPhotos">
-        <span class="etiquette">photos</span>
-        <div id="vignettes" class="vignettes"></div>
-        <div class="actions">
-          <button type="button" id="prendrePhoto" class="bouton secondaire">prendre une photo</button>
-          <button type="button" id="ajouterPhoto" class="bouton secondaire">galerie</button>
+        <div class="champPhotos">
+          <span class="etiquette">photos</span>
+          <div id="vignettes" class="vignettes"></div>
+          <div class="actions">
+            <button type="button" id="prendrePhoto" class="bouton secondaire">prendre une photo</button>
+            <button type="button" id="ajouterPhoto" class="bouton secondaire">galerie</button>
+          </div>
+          <!-- « capture » ouvre directement l'appareil photo (le sélecteur d'Android ne le propose plus) -->
+          <input type="file" id="appareilPhoto" accept="image/*" capture="environment" hidden>
+          <input type="file" id="choixPhoto" accept="image/*" hidden>
         </div>
-        <!-- « capture » ouvre directement l'appareil photo (le sélecteur d'Android ne le propose plus) -->
-        <input type="file" id="appareilPhoto" accept="image/*" capture="environment" hidden>
-        <input type="file" id="choixPhoto" accept="image/*" hidden>
       </div>
 
       <div class="boutonsFiche">
@@ -124,6 +128,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=14"></script>
+  <script type="module" src="js/app.js?v=15"></script>
 </body>
 </html>

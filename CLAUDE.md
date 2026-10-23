@@ -90,7 +90,10 @@ Trois écrans (`<section class="ecran">`, un seul visible à la fois via `hidden
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
-Fiche remarque : zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
+Fiche remarque : « description » (étiquette au-dessus du champ), puis une grille à deux colonnes
+(`grilleFiche`) : « statut », « chapitre » et « date » avec l'étiquette et le champ sur la même ligne ;
+« photos » (étiquette, vignettes en dessous). Les quatre étiquettes ont la largeur de la plus longue.
+« Chapitre » = **CE** (corps d'exécution) ; pour l'instant champ libre, stocké dans le champ `entreprise` des données. Zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
 sélecteur de photos des Android récents ne propose plus l'appareil photo : « prendre une photo » utilise
 `capture="environment"` pour l'ouvrir directement. Une
 vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
@@ -155,7 +158,7 @@ Fait :
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait),
    ajoutées à l'export (format d'export version 2).
 8. Application installable et hors ligne (manifeste web, service worker, icônes provisoires : pastille
-   orange « 1 »). **À vérifier sur Android** : installation, puis ouverture en mode avion.
+   orange « 1 »), bouton « installer », bandeau « nouvelle version disponible ». Vérifié sur Android.
 
 À faire, dans cet ordre :
 9. Structure du projet :
@@ -169,8 +172,8 @@ Fait :
      (facultative). Les entreprises n'apparaissent **ni dans la fiche ni dans la liste des remarques** ;
    - un plan peut être lié à un niveau (facultatif) ;
    - fiche : niveau → local (liste réduite au niveau, n° rempli automatiquement, sert seulement au tri
-     et au filtre) ; lot → CE (liste réduite au lot). Le champ libre actuel « Entreprise / lot »
-     disparaît : prévoir la reprise des valeurs déjà saisies.
+     et au filtre) ; lot → CE, affiché « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ
+     `entreprise` des données) disparaît : prévoir la reprise des valeurs déjà saisies.
 10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
     Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
     nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet

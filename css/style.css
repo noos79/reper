@@ -215,14 +215,29 @@ h1 {
   font-weight: var(--bouton-danger-graisse);
 }
 
-/* ===== Photos dans la fiche ===== */
-.champPhotos {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+/* ===== Statut, chapitre, date, photos : grille à deux colonnes ===== */
+/* 1re colonne à la largeur de la plus longue étiquette (« max-content ») : toutes les étiquettes
+   s'étirent à cette largeur. « display: contents » fait des enfants du label et de champPhotos
+   des cases de la grille. */
+.grilleFiche {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  gap: 14px 12px;
   margin-bottom: 18px;
 }
+
+#fiche .grilleFiche label,
+.grilleFiche .champPhotos { display: contents; }
+
+.grilleFiche .etiquette {
+  align-self: center;
+  text-align: center;
+}
+
+/* ===== Photos dans la fiche : sous leur étiquette, sur toute la largeur ===== */
+.champPhotos .vignettes,
+.champPhotos .actions { grid-column: 1 / -1; }
 
 .vignettes {
   display: flex;
