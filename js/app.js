@@ -21,6 +21,15 @@ db.version(2).stores({
   remarques: "id, planId, projetId",
   photos: "id, remarqueId, planId, projetId"
 });
+// Version 3 : niveaux et locaux de chaque projet (importés depuis un fichier CSV)
+db.version(3).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -42,7 +51,7 @@ const COULEUR_TRAIT =
 
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
-const VERSION_EXPORT = 2;           // version 2 : ajout des photos
+const VERSION_EXPORT = 3;           // version 2 : ajout des photos ; version 3 : niveaux et locaux
 
 // ===== Raccourci =====
 const el = (id) => document.getElementById(id);
@@ -52,6 +61,8 @@ const listeProjets = el("listeProjets");
 const listePlans = el("listePlans");
 const choixPdf = el("choixPdf");
 const choixZip = el("choixZip");
+const listeLocaux = el("listeLocaux");
+const choixCsv = el("choixCsv");
 const canevas = el("canevasPlan");
 const cadre = el("cadrePlan");
 const contenu = el("contenuPlan");
@@ -134,6 +145,8 @@ async function exporterProjet(projet) {
     const plans = await db.plans.where("projetId").equals(projet.id).toArray();
     const remarquesProjet = await db.remarques.where("projetId").equals(projet.id).toArray();
     const photosProjet = await db.photos.where("projetId").equals(projet.id).toArray();
+    const niveauxProjet = await db.niveaux.where("projetId").equals(projet.id).toArray();
+    const locauxProjet = await db.locaux.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
@@ -145,7 +158,9 @@ async function exporterProjet(projet) {
       plans: plans.map(({ fichier, ...reste }) => reste),
       remarques: remarquesProjet,
       // De même, chaque photo sans son « image » : rangée à part dans le dossier photos/
-      photos: photosProjet.map(({ image, ...reste }) => reste)
+      photos: photosProjet.map(({ image, ...reste }) => reste),
+      niveaux: niveauxProjet,
+      locaux: locauxProjet
     }, null, 2));
 
     for (const plan of plans) {
@@ -192,15 +207,22 @@ async function importerProjet(fichierZip) {
   if (donnees.format !== FORMAT_EXPORT) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
-  // Version 1 (sans photos) et version 2 (avec photos) sont acceptées
-  if (donnees.version !== 1 && donnees.version !== 2) {
+  // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux)
+  if (![1, 2, 3].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
   const photosImportees = donnees.photos || [];   // absentes en version 1
+  const niveauxImportes = donnees.niveaux || [];  // absents avant la version 3
+  const locauxImportes = donnees.locaux || [];
   if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
-      || !Array.isArray(photosImportees)) {
+      || !Array.isArray(photosImportees) || !Array.isArray(niveauxImportes)
+      || !Array.isArray(locauxImportes)) {
     throw new Error("le fichier projet.json est incomplet.");
+  }
+  const idsNiveaux = new Set(niveauxImportes.map((n) => n.id));
+  if (locauxImportes.some((l) => !idsNiveaux.has(l.niveauId))) {
+    throw new Error("certains locaux renvoient à un niveau absent du fichier.");
   }
   const idsPlans = new Set(plans.map((p) => p.id));
   if (remarquesImportees.some((r) => !idsPlans.has(r.planId))) {
@@ -241,35 +263,48 @@ async function importerProjet(fichierZip) {
   if (existant && !confirm(
     `Le projet « ${existant.nom} » existe déjà sur cet appareil.\n\n` +
     `Le remplacer par la version du fichier (exportée le ${formaterDate(donnees.exporteLe)}) ?\n` +
-    `Ses plans, remarques et photos actuels seront définitivement supprimés.`
+    `Ses plans, remarques, photos et locaux actuels seront définitivement supprimés.`
   )) return;
 
   // Transaction : soit tout le projet est remplacé, soit rien ne change
-  await db.transaction("rw", db.projets, db.plans, db.remarques, db.photos, async () => {
-    await db.photos.where("projetId").equals(projet.id).delete();
-    await db.remarques.where("projetId").equals(projet.id).delete();
-    await db.plans.where("projetId").equals(projet.id).delete();
+  await db.transaction("rw", tablesDuProjet(), async () => {
+    await viderProjet(projet.id);
     await db.projets.put(projet);
     await db.plans.bulkAdd(plansAImporter);
     await db.remarques.bulkAdd(remarquesAImporter);
     await db.photos.bulkAdd(photosAImporter);
+    await db.niveaux.bulkAdd(niveauxImportes.map((n) => ({ ...n, projetId: projet.id })));
+    await db.locaux.bulkAdd(locauxImportes.map((l) => ({ ...l, projetId: projet.id })));
   });
 
   alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
-    `${remarquesImportees.length} remarque(s), ${photosImportees.length} photo(s).`);
+    `${remarquesImportees.length} remarque(s), ${photosImportees.length} photo(s), ` +
+    `${locauxImportes.length} local(aux).`);
 }
 
 async function supprimerProjet(projet) {
-  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans, remarques et photos ?`)) return;
+  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans, remarques, photos et locaux ?`)) return;
 
   // Transaction : soit tout est supprimé, soit rien (jamais de remarques ni de photos orphelines)
-  await db.transaction("rw", db.projets, db.plans, db.remarques, db.photos, async () => {
-    await db.photos.where("projetId").equals(projet.id).delete();
-    await db.remarques.where("projetId").equals(projet.id).delete();
-    await db.plans.where("projetId").equals(projet.id).delete();
+  await db.transaction("rw", tablesDuProjet(), async () => {
+    await viderProjet(projet.id);
     await db.projets.delete(projet.id);
   });
   await afficherProjets();
+}
+
+// Toutes les tables qui contiennent des données d'un projet (pour les transactions)
+function tablesDuProjet() {
+  return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux];
+}
+
+// Efface le contenu d'un projet (pas le projet lui-même). À appeler dans une transaction.
+async function viderProjet(projetId) {
+  await db.photos.where("projetId").equals(projetId).delete();
+  await db.remarques.where("projetId").equals(projetId).delete();
+  await db.plans.where("projetId").equals(projetId).delete();
+  await db.locaux.where("projetId").equals(projetId).delete();
+  await db.niveaux.where("projetId").equals(projetId).delete();
 }
 
 // ===================================================================
@@ -330,6 +365,136 @@ async function supprimerPlan(plan) {
     await db.plans.delete(plan.id);
   });
   await ouvrirProjet(projetCourant);
+}
+
+// ===================================================================
+// ÉCRAN LOCAUX : NIVEAUX ET LOCAUX DU PROJET
+// ===================================================================
+el("ouvrirLocaux").addEventListener("click", ouvrirLocaux);
+el("retourProjetLocaux").addEventListener("click", () => ouvrirProjet(projetCourant));
+
+async function ouvrirLocaux() {
+  el("titreLocaux").textContent = "Locaux · " + projetCourant.nom;
+  const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
+  const locaux = await db.locaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
+
+  listeLocaux.replaceChildren();
+  if (niveaux.length === 0) {
+    listeLocaux.append(elementVide(
+      "Aucun local. Importe un fichier CSV : trois colonnes « niveau ; n° ; nom », " +
+      "séparées par des points-virgules, la première ligne contenant les titres."
+    ));
+  }
+  for (const niveau of niveaux) {
+    // Titre du niveau, dans une étiquette de la charte
+    const titre = document.createElement("li");
+    titre.className = "titreNiveau";
+    const etiquette = document.createElement("span");
+    etiquette.className = "etiquette";
+    etiquette.textContent = niveau.nom;
+    titre.append(etiquette);
+    listeLocaux.append(titre);
+
+    for (const local of locaux.filter((l) => l.niveauId === niveau.id)) {
+      const li = document.createElement("li");
+      li.className = "ligneLocal";
+      const numero = document.createElement("span");
+      numero.className = "numeroLocal";
+      numero.textContent = local.numero;
+      const nom = document.createElement("span");
+      nom.textContent = local.nom;
+      li.append(numero, nom);
+      listeLocaux.append(li);
+    }
+  }
+  afficherEcran("ecranLocaux");
+}
+
+choixCsv.addEventListener("change", async () => {
+  const fichier = choixCsv.files[0];
+  choixCsv.value = "";   // permet de rechoisir le même fichier plus tard
+  if (!fichier) return;
+
+  try {
+    await importerLocaux(fichier);
+  } catch (erreur) {
+    alert("Import impossible : " + erreur.message);
+  }
+  await ouvrirLocaux();
+});
+
+// Remplace les niveaux et locaux du projet par ceux du fichier. Un niveau (même nom) ou un local
+// (même niveau et même n°) déjà connu garde son identifiant : les liens futurs avec les remarques
+// ne sont donc pas cassés par un nouvel import.
+async function importerLocaux(fichierCsv) {
+  const lignes = analyserCsv(lireTexte(await fichierCsv.arrayBuffer()));
+  if (lignes.length > 0 && lignes[0].length < 2) {
+    throw new Error("les colonnes doivent être séparées par des points-virgules « ; ».");
+  }
+
+  const projetId = projetCourant.id;
+  const anciensNiveaux = await db.niveaux.where("projetId").equals(projetId).toArray();
+  const anciensLocaux = await db.locaux.where("projetId").equals(projetId).toArray();
+  const ancienIdNiveau = new Map(anciensNiveaux.map((n) => [n.nom, n.id]));
+  const ancienIdLocal = new Map(anciensLocaux.map((l) => [l.niveauId + "|" + l.numero, l.id]));
+
+  const niveaux = [];
+  const locaux = [];
+  const niveauParNom = new Map();
+  const clesVues = new Set();
+  const lignesIgnorees = [];
+
+  // La première ligne contient les titres des colonnes : on commence à la deuxième
+  for (let i = 1; i < lignes.length; i++) {
+    const [nomNiveau = "", numero = "", nom = ""] = lignes[i].map((cellule) => cellule.trim());
+    if (!nomNiveau && !numero && !nom) continue;   // ligne vide
+    const numeroLigne = i + 1;                     // tel qu'affiché dans Excel
+
+    if (!nomNiveau || !numero) { lignesIgnorees.push(numeroLigne); continue; }
+
+    let niveau = niveauParNom.get(nomNiveau);
+    if (!niveau) {
+      niveau = {
+        id: ancienIdNiveau.get(nomNiveau) || crypto.randomUUID(),
+        projetId,
+        nom: nomNiveau,
+        ordre: niveaux.length   // ordre d'apparition dans le fichier
+      };
+      niveaux.push(niveau);
+      niveauParNom.set(nomNiveau, niveau);
+    }
+
+    const cle = niveau.id + "|" + numero;
+    if (clesVues.has(cle)) { lignesIgnorees.push(numeroLigne); continue; }   // doublon
+    clesVues.add(cle);
+    locaux.push({
+      id: ancienIdLocal.get(cle) || crypto.randomUUID(),
+      projetId,
+      niveauId: niveau.id,
+      numero,
+      nom,
+      ordre: locaux.length
+    });
+  }
+
+  if (locaux.length === 0) throw new Error("aucun local trouvé dans ce fichier.");
+
+  if (anciensLocaux.length > 0 && !confirm(
+    `Remplacer les ${anciensLocaux.length} local(aux) actuels par les ${locaux.length} du fichier ?`
+  )) return;
+
+  await db.transaction("rw", db.niveaux, db.locaux, async () => {
+    await db.locaux.where("projetId").equals(projetId).delete();
+    await db.niveaux.where("projetId").equals(projetId).delete();
+    await db.niveaux.bulkAdd(niveaux);
+    await db.locaux.bulkAdd(locaux);
+  });
+
+  let message = `${niveaux.length} niveau(x) et ${locaux.length} local(aux) importés.`;
+  if (lignesIgnorees.length > 0) {
+    message += `\n\nLignes ignorées (niveau ou n° manquant, ou doublon) : ${lignesIgnorees.join(", ")}.`;
+  }
+  alert(message);
 }
 
 // ===================================================================
@@ -772,6 +937,52 @@ function telecharger(blob, nomFichier) {
   lien.click();
   // Libère la mémoire un peu plus tard, une fois le téléchargement lancé
   setTimeout(() => URL.revokeObjectURL(lien.href), 10_000);
+}
+
+// Lit un fichier texte. Excel enregistre en UTF-8 (« CSV UTF-8 ») ou en Windows-1252
+// (« CSV séparateur point-virgule ») : on essaie le premier, sinon le second, pour garder les accents.
+function lireTexte(octets) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(octets);
+  } catch {
+    return new TextDecoder("windows-1252").decode(octets);
+  }
+}
+
+// Découpe un texte CSV en lignes et en cellules (séparateur « ; »). Gère les cellules entre
+// guillemets, qui peuvent contenir un « ; », un saut de ligne ou des guillemets doublés « "" ».
+function analyserCsv(texte) {
+  const lignes = [];
+  let ligne = [];
+  let cellule = "";
+  let entreGuillemets = false;
+
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte[i];
+    if (entreGuillemets) {
+      if (c === '"' && texte[i + 1] === '"') { cellule += '"'; i++; }
+      else if (c === '"') entreGuillemets = false;
+      else cellule += c;
+    } else if (c === '"') {
+      entreGuillemets = true;
+    } else if (c === ";") {
+      ligne.push(cellule);
+      cellule = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && texte[i + 1] === "\n") i++;   // fin de ligne Windows
+      ligne.push(cellule);
+      lignes.push(ligne);
+      ligne = [];
+      cellule = "";
+    } else {
+      cellule += c;
+    }
+  }
+  if (cellule || ligne.length > 0) {   // dernière ligne sans saut de ligne final
+    ligne.push(cellule);
+    lignes.push(ligne);
+  }
+  return lignes;
 }
 
 // Retire les caractères interdits dans un nom de fichier Windows ou Android

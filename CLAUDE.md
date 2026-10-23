@@ -59,11 +59,21 @@ remarques: "id, planId, projetId"
            // id, projetId, planId, numero, x, y, texte, statut, entreprise, date
 photos:    "id, remarqueId, planId, projetId"          (depuis la version 2 du schéma)
            // id, projetId, planId, remarqueId, image (Blob JPEG), largeur, hauteur, traits, ajouteeLe
+niveaux:   "id, projetId"                              (depuis la version 3 du schéma)
+           // id, projetId, nom, ordre
+locaux:    "id, projetId, niveauId"                    (depuis la version 3 du schéma)
+           // id, projetId, niveauId, numero, nom, ordre
 ```
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **2**.
+  une version existante : des appareils ont déjà des données. Version actuelle : **3**.
+- **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
+  (ignorée), encodage UTF-8 (« CSV UTF-8 » d'Excel) ou Windows-1252 (« CSV séparateur point-virgule »),
+  reconnu automatiquement. Lignes sans niveau ou sans n°, et doublons (même niveau et même n°), ignorés et
+  signalés. Les niveaux sont créés dans l'ordre d'apparition (`ordre`). Un nouvel import **remplace** la
+  liste après confirmation, mais un niveau (même nom) ou un local (même niveau, même n°) déjà connu
+  **garde son `id`** : les liens des remarques vers les locaux survivent à un réimport.
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
   **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
   liste de points `[x, y]` **en proportion de l'image (0 à 1)**. Couleur : `--trait-annotation`.
@@ -77,16 +87,20 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 2**) + `plans/<id>.pdf` +
-  `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos) et 2.
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 3**, avec `niveaux` et `locaux`) +
+  `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux)
+  et 3. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
+  chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
   bases séparées). Pas de synchronisation en V1.
 
 ## Interface
 
-Trois écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
+Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
 1. **Projets** : liste, création, suppression, export, import.
-2. **Projet** : liste des plans (avec le nombre de remarques ouvertes), ajout d'un PDF, suppression.
+2. **Projet** : liste des plans (avec le nombre de remarques ouvertes), ajout d'un PDF, suppression ;
+   bouton « locaux ».
+   - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
@@ -160,20 +174,23 @@ Fait :
 8. Application installable et hors ligne (manifeste web, service worker, icônes provisoires : pastille
    orange « 1 »), bouton « installer », bandeau « nouvelle version disponible ». Vérifié sur Android.
 
+9. Structure du projet, en trois morceaux :
+   - **9a (fait)** : niveaux et locaux (niveau, n°, nom), importés depuis un fichier **CSV** plutôt
+     qu'Excel (SheetJS sur le CDN : version ancienne avec failles connues) ; écran « Locaux » ; schéma 3,
+     export version 3.
+
 À faire, dans cet ordre :
-9. Structure du projet :
-   - niveaux ; locaux (niveau, n°, nom), importés depuis un fichier **CSV** (séparateur « ; », accents
-     d'Excel) plutôt qu'Excel (SheetJS sur le CDN : version ancienne avec failles connues) ;
-   - **lots** du marché et **CE** (corps d'exécution) : chaque CE appartient à un lot ; un lot compte
+   - **9b** : **lots** du marché et **CE** (corps d'exécution), saisis **dans l'application** (pas de
+     CSV) : chaque CE appartient à un lot ; un lot compte
      un ou plusieurs CE (ex. lot 1 Gros-œuvre → Démolitions, Égouttage, Structures, Toiture,
      Menuiseries extérieures ; lot 3 Électricité → un seul CE Électricité) ;
-   - page **Intervenants** : une entreprise par lot (l'adjudicataire, destinataire habituel des
+     page **Intervenants** : une entreprise par lot (l'adjudicataire, destinataire habituel des
      rapports) et, si besoin, un sous-traitant par CE ; chacun avec son adresse électronique
      (facultative). Les entreprises n'apparaissent **ni dans la fiche ni dans la liste des remarques** ;
-   - un plan peut être lié à un niveau (facultatif) ;
-   - fiche : niveau → local (liste réduite au niveau, n° rempli automatiquement, sert seulement au tri
-     et au filtre) ; lot → CE, affiché « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ
-     `entreprise` des données) disparaît : prévoir la reprise des valeurs déjà saisies.
+   - **9c** : un plan peut être lié à un niveau (facultatif) ; fiche : niveau → local (liste réduite au
+     niveau, n° rempli automatiquement, sert seulement au tri et au filtre) ; lot → CE, affiché
+     « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ `entreprise` des
+     données) disparaît **avec ses valeurs** (décision : pas de reprise, pas encore de vraies données).
 10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
     Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
     nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet

@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=15">
-  <link rel="stylesheet" href="css/style.css?v=15">
+  <link rel="stylesheet" href="css/charte.css?v=16">
+  <link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
 
@@ -35,6 +35,7 @@
       <button id="retourProjets" class="bouton" aria-label="Retour aux projets"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
       <h1 id="titreProjet"></h1>
       <div class="actions">
+        <button id="ouvrirLocaux" class="bouton secondaire">locaux</button>
         <label class="bouton">
           Ajouter un plan
           <input type="file" id="choixPdf" accept="application/pdf" hidden>
@@ -42,6 +43,22 @@
       </div>
     </header>
     <ul id="listePlans" class="liste"></ul>
+  </section>
+
+  <!-- Écran Locaux : niveaux et locaux du projet, importés depuis un fichier CSV -->
+  <section id="ecranLocaux" class="ecran" hidden>
+    <header>
+      <button id="retourProjetLocaux" class="bouton" aria-label="Retour au projet"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
+      <h1 id="titreLocaux">Locaux</h1>
+      <div class="actions">
+        <label class="bouton">
+          importer CSV
+          <!-- Plusieurs types : Android ne reconnaît pas toujours un .csv sous le même nom -->
+          <input type="file" id="choixCsv" accept=".csv,text/csv,text/comma-separated-values,text/plain,application/vnd.ms-excel" hidden>
+        </label>
+      </div>
+    </header>
+    <ul id="listeLocaux" class="liste"></ul>
   </section>
 
   <!-- Écran 3 : un plan et ses remarques -->
@@ -128,6 +145,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=15"></script>
+  <script type="module" src="js/app.js?v=16"></script>
 </body>
 </html>

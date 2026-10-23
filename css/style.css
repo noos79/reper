@@ -385,6 +385,24 @@ header h1 {
   cursor: pointer;
 }
 
+/* ===== Écran Locaux ===== */
+.liste li.titreNiveau {
+  border: none;
+  padding: 24px 0 8px;
+}
+
+.liste li.titreNiveau:first-child { padding-top: 8px; }
+
+.ligneLocal {
+  padding: 12px 0;
+  gap: 16px;
+}
+
+.numeroLocal {
+  min-width: 4.5em;   /* les noms s'alignent même avec des n° de longueurs différentes */
+  font-weight: var(--graisse-titre);
+}
+
 .liste li.listeVide {
   border: none;
   padding: 32px 0;
