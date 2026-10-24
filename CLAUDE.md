@@ -63,17 +63,29 @@ niveaux:   "id, projetId"                              (depuis la version 3 du s
            // id, projetId, nom, ordre
 locaux:    "id, projetId, niveauId"                    (depuis la version 3 du schéma)
            // id, projetId, niveauId, numero, nom, ordre
+lots:      "id, projetId"                              (depuis la version 4 du schéma)
+           // id, projetId, numero, nom, entreprise, courriel
+ce:        "id, projetId, lotId"                       (depuis la version 4 du schéma)
+           // id, projetId, lotId, nom, ordre, entreprise, courriel
 ```
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **3**.
+  une version existante : des appareils ont déjà des données. Version actuelle : **4**.
 - **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
   (ignorée), encodage UTF-8 (« CSV UTF-8 » d'Excel) ou Windows-1252 (« CSV séparateur point-virgule »),
   reconnu automatiquement. Lignes sans niveau ou sans n°, et doublons (même niveau et même n°), ignorés et
   signalés. Les niveaux sont créés dans l'ordre d'apparition (`ordre`). Un nouvel import **remplace** la
   liste après confirmation, mais un niveau (même nom) ou un local (même niveau, même n°) déjà connu
   **garde son `id`** : les liens des remarques vers les locaux survivent à un réimport.
+- **Lots et CE** saisis dans l'application (écran « Lots »). Lots triés par n° (comparaison numérique :
+  2 avant 10) ; n° unique dans le projet. Un lot compte **au moins un CE** : le premier est demandé à la
+  création du lot, et le dernier CE d'un lot ne peut pas être supprimé (supprimer le lot). Deux CE d'un
+  même lot ne portent pas le même nom. Supprimer un lot supprime ses CE (transaction).
+- **Intervenants** : `entreprise` et `courriel` (facultatifs) sur le lot = l'adjudicataire ; sur le CE =
+  le sous-traitant éventuel. Un nom vide retire l'entreprise et son adresse ; adresse vérifiée
+  simplement (`ADRESSE_VALIDE`). À ne pas confondre avec le champ `entreprise` des remarques (« chapitre »
+  libre, appelé à disparaître à l'étape 9c).
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
   **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
   liste de points `[x, y]` **en proportion de l'image (0 à 1)**. Couleur : `--trait-annotation`.
@@ -87,9 +99,10 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 3**, avec `niveaux` et `locaux`) +
-  `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux)
-  et 3. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 4**, avec `niveaux`, `locaux`, `lots`
+  et `ce`) +
+  `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
+  3 (sans lots) et 4. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
   chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
   bases séparées). Pas de synchronisation en V1.
@@ -99,8 +112,13 @@ Décisions à respecter :
 Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
 1. **Projets** : liste, création, suppression, export, import.
 2. **Projet** : liste des plans (avec le nombre de remarques ouvertes), ajout d'un PDF, suppression ;
-   bouton « locaux ».
+   boutons « locaux » et « lots ».
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
+   - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
+     dessous (renommer, supprimer), « + ajouter un CE » ; boutons « intervenants » et « nouveau lot ».
+     Saisies par les fenêtres de question du navigateur (`prompt`).
+   - **Intervenants** (`ecranIntervenants`, retour vers Lots) : par lot, « entreprise du lot » puis chaque
+     CE avec son sous-traitant ; « modifier » demande le nom puis l'adresse électronique.
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
@@ -112,6 +130,16 @@ sélecteur de photos des Android récents ne propose plus l'appareil photo : « 
 `capture="environment"` pour l'ouvrir directement. Une
 vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
 doigt, « annuler le trait », « supprimer », « terminé ».
+
+En-têtes : si la place manque (téléphone), les boutons passent sur une deuxième ligne, à droite ; le titre
+garde au moins 9em. Sauf l'écran **Plan**, toujours sur une ligne (titre coupé par « … ») pour garder la
+hauteur au plan.
+
+**PC et tablette en paysage** (largeur ≥ 900 px, hauteur ≥ 560 px) : la fiche flotte **à droite** pour
+laisser le plan visible ; téléphones et portrait : fiche au centre. Elle reste **modale** (le plan ne
+réagit pas tant qu'elle est ouverte). Piste à étudier plus tard : fiche fixe à droite, non modale, dont
+le contenu change quand on touche une autre pastille ; il faudra alors décider du sort des modifications
+non enregistrées (enregistrement automatique, ou question avant de changer de remarque).
 
 Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
 **complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible
@@ -139,7 +167,8 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
   texte noirs. Flèche de retour : dessin SVG (classe `fleche`),
   trait épais, branches obliques longues.
   Actions discrètes d'une ligne de liste (exporter, supprimer) :
-  texte gris seul, même police.
+  texte gris seul, même police. Un sigle reste en majuscules dans ce texte en minuscules (classe `sigle`,
+  ex. « + ajouter un CE »).
 - **Étiquettes** des champs (fiche) : même pastille noire que les boutons, au-dessus du champ.
 - **Champs** à remplir : sans trait, sauf le texte de la remarque (trait noir fin en dessous) ; trait
   turquoise pendant la saisie.
@@ -178,19 +207,21 @@ Fait :
    - **9a (fait)** : niveaux et locaux (niveau, n°, nom), importés depuis un fichier **CSV** plutôt
      qu'Excel (SheetJS sur le CDN : version ancienne avec failles connues) ; écran « Locaux » ; schéma 3,
      export version 3.
-
-À faire, dans cet ordre :
-   - **9b** : **lots** du marché et **CE** (corps d'exécution), saisis **dans l'application** (pas de
+   - **9b (fait)** : **lots** du marché et **CE** (corps d'exécution), saisis **dans l'application** (pas de
      CSV) : chaque CE appartient à un lot ; un lot compte
      un ou plusieurs CE (ex. lot 1 Gros-œuvre → Démolitions, Égouttage, Structures, Toiture,
      Menuiseries extérieures ; lot 3 Électricité → un seul CE Électricité) ;
      page **Intervenants** : une entreprise par lot (l'adjudicataire, destinataire habituel des
      rapports) et, si besoin, un sous-traitant par CE ; chacun avec son adresse électronique
      (facultative). Les entreprises n'apparaissent **ni dans la fiche ni dans la liste des remarques** ;
+     schéma 4, export version 4.
+
+À faire, dans cet ordre :
    - **9c** : un plan peut être lié à un niveau (facultatif) ; fiche : niveau → local (liste réduite au
      niveau, n° rempli automatiquement, sert seulement au tri et au filtre) ; lot → CE, affiché
      « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ `entreprise` des
      données) disparaît **avec ses valeurs** (décision : pas de reprise, pas encore de vraies données).
+     À prévoir : que deviennent les remarques liées quand on supprime un lot, un CE ou un local.
 10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
     Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
     nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet

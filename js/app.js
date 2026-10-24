@@ -30,6 +30,17 @@ db.version(3).stores({
   niveaux: "id, projetId",
   locaux: "id, projetId, niveauId"
 });
+// Version 4 : lots du marché et CE (corps d'exécution), avec leurs entreprises
+db.version(4).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId",
+  lots: "id, projetId",
+  ce: "id, projetId, lotId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -51,7 +62,10 @@ const COULEUR_TRAIT =
 
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
-const VERSION_EXPORT = 3;           // version 2 : ajout des photos ; version 3 : niveaux et locaux
+const VERSION_EXPORT = 4;           // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE
+
+// Vérification simple d'une adresse électronique : « quelque chose@quelque chose.quelque chose »
+const ADRESSE_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ===== Raccourci =====
 const el = (id) => document.getElementById(id);
@@ -63,6 +77,8 @@ const choixPdf = el("choixPdf");
 const choixZip = el("choixZip");
 const listeLocaux = el("listeLocaux");
 const choixCsv = el("choixCsv");
+const listeLots = el("listeLots");
+const listeIntervenants = el("listeIntervenants");
 const canevas = el("canevasPlan");
 const cadre = el("cadrePlan");
 const contenu = el("contenuPlan");
@@ -147,6 +163,8 @@ async function exporterProjet(projet) {
     const photosProjet = await db.photos.where("projetId").equals(projet.id).toArray();
     const niveauxProjet = await db.niveaux.where("projetId").equals(projet.id).toArray();
     const locauxProjet = await db.locaux.where("projetId").equals(projet.id).toArray();
+    const lotsProjet = await db.lots.where("projetId").equals(projet.id).toArray();
+    const ceProjet = await db.ce.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
@@ -160,7 +178,9 @@ async function exporterProjet(projet) {
       // De même, chaque photo sans son « image » : rangée à part dans le dossier photos/
       photos: photosProjet.map(({ image, ...reste }) => reste),
       niveaux: niveauxProjet,
-      locaux: locauxProjet
+      locaux: locauxProjet,
+      lots: lotsProjet,
+      ce: ceProjet
     }, null, 2));
 
     for (const plan of plans) {
@@ -207,18 +227,25 @@ async function importerProjet(fichierZip) {
   if (donnees.format !== FORMAT_EXPORT) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
-  // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux)
-  if (![1, 2, 3].includes(donnees.version)) {
+  // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE)
+  if (![1, 2, 3, 4].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
   const photosImportees = donnees.photos || [];   // absentes en version 1
   const niveauxImportes = donnees.niveaux || [];  // absents avant la version 3
   const locauxImportes = donnees.locaux || [];
+  const lotsImportes = donnees.lots || [];        // absents avant la version 4
+  const ceImportes = donnees.ce || [];
   if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
       || !Array.isArray(photosImportees) || !Array.isArray(niveauxImportes)
-      || !Array.isArray(locauxImportes)) {
+      || !Array.isArray(locauxImportes) || !Array.isArray(lotsImportes)
+      || !Array.isArray(ceImportes)) {
     throw new Error("le fichier projet.json est incomplet.");
+  }
+  const idsLots = new Set(lotsImportes.map((l) => l.id));
+  if (ceImportes.some((c) => !idsLots.has(c.lotId))) {
+    throw new Error("certains CE renvoient à un lot absent du fichier.");
   }
   const idsNiveaux = new Set(niveauxImportes.map((n) => n.id));
   if (locauxImportes.some((l) => !idsNiveaux.has(l.niveauId))) {
@@ -263,7 +290,7 @@ async function importerProjet(fichierZip) {
   if (existant && !confirm(
     `Le projet « ${existant.nom} » existe déjà sur cet appareil.\n\n` +
     `Le remplacer par la version du fichier (exportée le ${formaterDate(donnees.exporteLe)}) ?\n` +
-    `Ses plans, remarques, photos et locaux actuels seront définitivement supprimés.`
+    `Ses plans, remarques, photos, locaux et lots actuels seront définitivement supprimés.`
   )) return;
 
   // Transaction : soit tout le projet est remplacé, soit rien ne change
@@ -275,15 +302,17 @@ async function importerProjet(fichierZip) {
     await db.photos.bulkAdd(photosAImporter);
     await db.niveaux.bulkAdd(niveauxImportes.map((n) => ({ ...n, projetId: projet.id })));
     await db.locaux.bulkAdd(locauxImportes.map((l) => ({ ...l, projetId: projet.id })));
+    await db.lots.bulkAdd(lotsImportes.map((l) => ({ ...l, projetId: projet.id })));
+    await db.ce.bulkAdd(ceImportes.map((c) => ({ ...c, projetId: projet.id })));
   });
 
   alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
     `${remarquesImportees.length} remarque(s), ${photosImportees.length} photo(s), ` +
-    `${locauxImportes.length} local(aux).`);
+    `${locauxImportes.length} local(aux), ${lotsImportes.length} lot(s).`);
 }
 
 async function supprimerProjet(projet) {
-  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans, remarques, photos et locaux ?`)) return;
+  if (!confirm(`Supprimer le projet « ${projet.nom} » avec tous ses plans, remarques, photos, locaux et lots ?`)) return;
 
   // Transaction : soit tout est supprimé, soit rien (jamais de remarques ni de photos orphelines)
   await db.transaction("rw", tablesDuProjet(), async () => {
@@ -295,7 +324,7 @@ async function supprimerProjet(projet) {
 
 // Toutes les tables qui contiennent des données d'un projet (pour les transactions)
 function tablesDuProjet() {
-  return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux];
+  return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux, db.lots, db.ce];
 }
 
 // Efface le contenu d'un projet (pas le projet lui-même). À appeler dans une transaction.
@@ -305,6 +334,8 @@ async function viderProjet(projetId) {
   await db.plans.where("projetId").equals(projetId).delete();
   await db.locaux.where("projetId").equals(projetId).delete();
   await db.niveaux.where("projetId").equals(projetId).delete();
+  await db.ce.where("projetId").equals(projetId).delete();
+  await db.lots.where("projetId").equals(projetId).delete();
 }
 
 // ===================================================================
@@ -389,10 +420,7 @@ async function ouvrirLocaux() {
     // Titre du niveau, dans une étiquette de la charte
     const titre = document.createElement("li");
     titre.className = "titreNiveau";
-    const etiquette = document.createElement("span");
-    etiquette.className = "etiquette";
-    etiquette.textContent = niveau.nom;
-    titre.append(etiquette);
+    titre.append(creerEtiquette(niveau.nom));
     listeLocaux.append(titre);
 
     for (const local of locaux.filter((l) => l.niveauId === niveau.id)) {
@@ -495,6 +523,216 @@ async function importerLocaux(fichierCsv) {
     message += `\n\nLignes ignorées (niveau ou n° manquant, ou doublon) : ${lignesIgnorees.join(", ")}.`;
   }
   alert(message);
+}
+
+// ===================================================================
+// ÉCRAN LOTS : LOTS DU MARCHÉ ET LEURS CE (CORPS D'EXÉCUTION)
+// ===================================================================
+// Saisis dans l'application (pas de CSV). Chaque CE appartient à un lot ; un lot compte au moins
+// un CE (ex. lot 1 Gros-œuvre → Démolitions, Égouttage… ; lot 3 Électricité → un seul CE Électricité).
+el("ouvrirLots").addEventListener("click", ouvrirLots);
+el("retourProjetLots").addEventListener("click", () => ouvrirProjet(projetCourant));
+el("nouveauLot").addEventListener("click", creerLot);
+
+// Lots du projet triés par n° (« numeric » : le lot 2 avant le lot 10)
+async function lotsDuProjet() {
+  const lots = await db.lots.where("projetId").equals(projetCourant.id).toArray();
+  return lots.sort((a, b) => a.numero.localeCompare(b.numero, "fr", { numeric: true }));
+}
+
+// CE du projet, dans l'ordre où ils ont été ajoutés
+function ceDuProjet() {
+  return db.ce.where("projetId").equals(projetCourant.id).sortBy("ordre");
+}
+
+function libelleLot(lot) {
+  return `lot ${lot.numero} · ${lot.nom}`;
+}
+
+async function ouvrirLots() {
+  el("titreLots").textContent = "Lots · " + projetCourant.nom;
+  const lots = await lotsDuProjet();
+  const listeCe = await ceDuProjet();
+
+  listeLots.replaceChildren();
+  if (lots.length === 0) {
+    listeLots.append(elementVide("Aucun lot. Crée le premier avec « nouveau lot »."));
+  }
+  for (const lot of lots) {
+    listeLots.append(elementLigne(creerEtiquette(libelleLot(lot)), [
+      ["modifier", () => modifierLot(lot)],
+      ["supprimer", () => supprimerLot(lot)]
+    ], "titreNiveau"));
+
+    const ceDuLot = listeCe.filter((c) => c.lotId === lot.id);
+    for (const ce of ceDuLot) {
+      listeLots.append(elementLigne(ce.nom, [
+        ["renommer", () => renommerCe(ce, ceDuLot)],
+        ["supprimer", () => supprimerCe(ce, ceDuLot)]
+      ], "ligneCe"));
+    }
+
+    const ajout = document.createElement("li");
+    ajout.className = "ligneAjout";
+    const boutonAjout = boutonAction("+ ajouter un ", () => ajouterCe(lot, ceDuLot));
+    boutonAjout.append(creerSigle("CE"));   // la charte met les actions en minuscules, sauf le sigle
+    ajout.append(boutonAjout);
+    listeLots.append(ajout);
+  }
+  afficherEcran("ecranLots");
+}
+
+async function creerLot() {
+  const lots = await lotsDuProjet();
+  const numero = demander("N° du lot :");
+  if (!numero) return;
+  if (lots.some((l) => l.numero === numero)) { alert(`Le lot ${numero} existe déjà.`); return; }
+  const nom = demander(`Nom du lot ${numero} :`);
+  if (!nom) return;
+  // Un lot compte au moins un CE : on demande le premier tout de suite (souvent du même nom)
+  const nomCe = demander(`Premier CE (corps d'exécution) du lot ${numero} :`, nom);
+  if (!nomCe) return;
+
+  const lot = { id: crypto.randomUUID(), projetId: projetCourant.id, numero, nom, entreprise: "", courriel: "" };
+  await db.transaction("rw", db.lots, db.ce, async () => {
+    await db.lots.add(lot);
+    await db.ce.add(nouveauCe(lot, nomCe, 0));
+  });
+  await ouvrirLots();
+}
+
+async function modifierLot(lot) {
+  const lots = await lotsDuProjet();
+  const numero = demander("N° du lot :", lot.numero);
+  if (!numero) return;
+  if (lots.some((l) => l.numero === numero && l.id !== lot.id)) { alert(`Le lot ${numero} existe déjà.`); return; }
+  const nom = demander(`Nom du lot ${numero} :`, lot.nom);
+  if (!nom) return;
+
+  await db.lots.update(lot.id, { numero, nom });
+  await ouvrirLots();
+}
+
+async function supprimerLot(lot) {
+  if (!confirm(`Supprimer le ${libelleLot(lot)}, ses CE et leurs entreprises ?`)) return;
+
+  // Transaction : jamais de CE sans son lot
+  await db.transaction("rw", db.lots, db.ce, async () => {
+    await db.ce.where("lotId").equals(lot.id).delete();
+    await db.lots.delete(lot.id);
+  });
+  await ouvrirLots();
+}
+
+function nouveauCe(lot, nom, ordre) {
+  return { id: crypto.randomUUID(), projetId: lot.projetId, lotId: lot.id, nom, ordre, entreprise: "", courriel: "" };
+}
+
+// Deux CE du même lot ne peuvent pas porter le même nom (majuscules et minuscules confondues)
+function nomDejaPris(nom, ceDuLot, sauf = null) {
+  return ceDuLot.some((c) => c !== sauf && c.nom.toLowerCase() === nom.toLowerCase());
+}
+
+async function ajouterCe(lot, ceDuLot) {
+  const nom = demander(`Nouveau CE du ${libelleLot(lot)} :`);
+  if (!nom) return;
+  if (nomDejaPris(nom, ceDuLot)) { alert(`Le CE « ${nom} » existe déjà dans ce lot.`); return; }
+
+  const ordre = Math.max(-1, ...ceDuLot.map((c) => c.ordre)) + 1;   // à la fin de la liste
+  await db.ce.add(nouveauCe(lot, nom, ordre));
+  await ouvrirLots();
+}
+
+async function renommerCe(ce, ceDuLot) {
+  const nom = demander("Nom du CE :", ce.nom);
+  if (!nom) return;
+  if (nomDejaPris(nom, ceDuLot, ce)) { alert(`Le CE « ${nom} » existe déjà dans ce lot.`); return; }
+
+  await db.ce.update(ce.id, { nom });
+  await ouvrirLots();
+}
+
+async function supprimerCe(ce, ceDuLot) {
+  if (ceDuLot.length <= 1) {
+    alert("Un lot compte au moins un CE. Pour retirer celui-ci, supprime le lot.");
+    return;
+  }
+  if (!confirm(`Supprimer le CE « ${ce.nom} » et son sous-traitant ?`)) return;
+
+  await db.ce.delete(ce.id);
+  await ouvrirLots();
+}
+
+// ===================================================================
+// ÉCRAN INTERVENANTS : ENTREPRISE DE CHAQUE LOT, SOUS-TRAITANT DE CHAQUE CE
+// ===================================================================
+// L'entreprise du lot (l'adjudicataire) est le destinataire habituel des rapports ; un CE peut
+// avoir un sous-traitant. Chacun avec une adresse électronique facultative. Stockés sur le lot
+// et sur le CE (champs « entreprise » et « courriel »). Pas affichés dans les remarques.
+el("ouvrirIntervenants").addEventListener("click", ouvrirIntervenants);
+el("retourLots").addEventListener("click", ouvrirLots);
+
+async function ouvrirIntervenants() {
+  el("titreIntervenants").textContent = "Intervenants · " + projetCourant.nom;
+  const lots = await lotsDuProjet();
+  const listeCe = await ceDuProjet();
+
+  listeIntervenants.replaceChildren();
+  if (lots.length === 0) {
+    listeIntervenants.append(elementVide("Aucun lot. Crée d'abord les lots et leurs CE."));
+  }
+  for (const lot of lots) {
+    const titre = document.createElement("li");
+    titre.className = "titreNiveau";
+    titre.append(creerEtiquette(libelleLot(lot)));
+    listeIntervenants.append(titre);
+
+    listeIntervenants.append(elementIntervenant("Entreprise du lot", lot, "aucune entreprise",
+      () => modifierIntervenant(db.lots, lot, `Entreprise adjudicataire du ${libelleLot(lot)} :`)));
+
+    for (const ce of listeCe.filter((c) => c.lotId === lot.id)) {
+      listeIntervenants.append(elementIntervenant(ce.nom, ce, "pas de sous-traitant",
+        () => modifierIntervenant(db.ce, ce, `Sous-traitant pour le CE « ${ce.nom} » :`)));
+    }
+  }
+  afficherEcran("ecranIntervenants");
+}
+
+// Ligne : rôle (ou nom du CE) en gras, puis « entreprise · adresse » en dessous
+function elementIntervenant(titre, element, siAucune, quandModifier) {
+  const bloc = document.createElement("span");
+  bloc.className = "blocIntervenant";
+  const spanTitre = document.createElement("span");
+  spanTitre.className = "nomIntervenant";
+  spanTitre.textContent = titre;
+  const spanDetail = document.createElement("span");
+  spanDetail.className = "detailElement";
+  spanDetail.textContent = element.entreprise
+    ? [element.entreprise, element.courriel].filter(Boolean).join(" · ")
+    : siAucune;
+  bloc.append(spanTitre, spanDetail);
+  return elementLigne(bloc, [["modifier", quandModifier]], "ligneIntervenant");
+}
+
+// « table » : db.lots ou db.ce. Un nom vide retire l'entreprise (et son adresse).
+async function modifierIntervenant(table, element, question) {
+  const reponse = prompt(question + "\n(laisser vide s'il n'y en a pas)", element.entreprise || "");
+  if (reponse === null) return;   // « Annuler »
+  const entreprise = reponse.trim();
+
+  let courriel = "";
+  if (entreprise) {
+    const adresse = prompt(`Adresse électronique de ${entreprise} (facultative) :`, element.courriel || "");
+    if (adresse === null) return;
+    courriel = adresse.trim();
+    if (courriel && !ADRESSE_VALIDE.test(courriel)) {
+      alert(`Adresse électronique non valide : ${courriel}\nRien n'a été modifié.`);
+      return;
+    }
+  }
+
+  await table.update(element.id, { entreprise, courriel });
+  await ouvrirIntervenants();
 }
 
 // ===================================================================
@@ -912,21 +1150,52 @@ function elementListe(titre, detail, quandOuvrir, quandSupprimer, quandExporter)
 
   li.append(ouvrir);
 
-  if (quandExporter) {
-    const exporter = document.createElement("button");
-    exporter.className = "actionElement";
-    exporter.textContent = "Exporter";
-    exporter.addEventListener("click", quandExporter);
-    li.append(exporter);
-  }
-
-  const supprimer = document.createElement("button");
-  supprimer.className = "actionElement";
-  supprimer.textContent = "Supprimer";
-  supprimer.addEventListener("click", quandSupprimer);
-
-  li.append(supprimer);
+  if (quandExporter) li.append(boutonAction("Exporter", quandExporter));
+  li.append(boutonAction("Supprimer", quandSupprimer));
   return li;
+}
+
+// Action discrète d'une ligne de liste (texte gris seul)
+function boutonAction(texte, quandToucher) {
+  const bouton = document.createElement("button");
+  bouton.className = "actionElement";
+  bouton.textContent = texte;
+  bouton.addEventListener("click", quandToucher);
+  return bouton;
+}
+
+// Ligne de liste : un contenu (texte ou élément) suivi d'actions discrètes [texte, fonction]
+function elementLigne(contenu, actions, classe) {
+  const li = document.createElement("li");
+  li.className = classe;
+  const span = document.createElement("span");
+  span.className = "contenuLigne";
+  span.append(contenu);
+  li.append(span);
+  for (const [texte, quandToucher] of actions) li.append(boutonAction(texte, quandToucher));
+  return li;
+}
+
+// Étiquette de la charte (pastille noire, texte blanc)
+function creerEtiquette(texte) {
+  const etiquette = document.createElement("span");
+  etiquette.className = "etiquette";
+  etiquette.textContent = texte;
+  return etiquette;
+}
+
+// Sigle qui reste en majuscules dans un bouton ou une étiquette (classe « sigle »)
+function creerSigle(texte) {
+  const sigle = document.createElement("span");
+  sigle.className = "sigle";
+  sigle.textContent = texte;
+  return sigle;
+}
+
+// Pose une question ; renvoie la réponse sans espaces autour, ou null si annulé ou laissé vide
+function demander(question, valeurParDefaut = "") {
+  const reponse = prompt(question, valeurParDefaut);
+  return reponse === null ? null : reponse.trim() || null;
 }
 
 // Fait enregistrer un fichier par le navigateur (dossier Téléchargements)

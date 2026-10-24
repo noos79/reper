@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=16">
-  <link rel="stylesheet" href="css/style.css?v=16">
+  <link rel="stylesheet" href="css/charte.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=17">
 </head>
 <body>
 
@@ -36,6 +36,7 @@
       <h1 id="titreProjet"></h1>
       <div class="actions">
         <button id="ouvrirLocaux" class="bouton secondaire">locaux</button>
+        <button id="ouvrirLots" class="bouton secondaire">lots</button>
         <label class="bouton">
           Ajouter un plan
           <input type="file" id="choixPdf" accept="application/pdf" hidden>
@@ -59,6 +60,28 @@
       </div>
     </header>
     <ul id="listeLocaux" class="liste"></ul>
+  </section>
+
+  <!-- Écran Lots : lots du marché et leurs CE (corps d'exécution), saisis dans l'application -->
+  <section id="ecranLots" class="ecran" hidden>
+    <header>
+      <button id="retourProjetLots" class="bouton" aria-label="Retour au projet"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
+      <h1 id="titreLots">Lots</h1>
+      <div class="actions">
+        <button id="ouvrirIntervenants" class="bouton secondaire">intervenants</button>
+        <button id="nouveauLot" class="bouton">nouveau lot</button>
+      </div>
+    </header>
+    <ul id="listeLots" class="liste"></ul>
+  </section>
+
+  <!-- Écran Intervenants : entreprise de chaque lot, sous-traitant éventuel de chaque CE -->
+  <section id="ecranIntervenants" class="ecran" hidden>
+    <header>
+      <button id="retourLots" class="bouton" aria-label="Retour aux lots"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
+      <h1 id="titreIntervenants">Intervenants</h1>
+    </header>
+    <ul id="listeIntervenants" class="liste"></ul>
   </section>
 
   <!-- Écran 3 : un plan et ses remarques -->
@@ -145,6 +168,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=16"></script>
+  <script type="module" src="js/app.js?v=17"></script>
 </body>
 </html>

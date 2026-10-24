@@ -19,6 +19,7 @@ body {
 /* ===== En-tête ===== */
 header {
   display: flex;
+  flex-wrap: wrap;   /* si la place manque, les boutons passent sur une deuxième ligne */
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -34,6 +35,18 @@ h1 {
 }
 
 .actions { display: flex; gap: 8px; }
+
+/* Boutons de l'en-tête : à droite, même passés à la ligne, et jamais coupés sur deux lignes */
+header .actions {
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+header .bouton { white-space: nowrap; }
+
+/* Écran Plan : en-tête toujours sur une ligne, pour laisser au plan toute la hauteur possible */
+#ecranPlan header { flex-wrap: nowrap; }
 
 /* Bouton de la charte : pastille noire, texte blanc en police à chasse fixe, minuscules */
 .bouton,
@@ -136,6 +149,15 @@ h1 {
 }
 
 #fiche::backdrop { background: rgba(17, 17, 17, 0.35); }
+
+/* PC et tablette en paysage : la fiche flotte à droite, le plan reste visible à gauche.
+   Les téléphones en paysage (hauteur < 560 px) gardent la fiche au centre. */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 560px) {
+  #fiche {
+    margin-left: auto;
+    margin-right: 16px;
+  }
+}
 
 #fiche h2 {
   margin: 0 0 20px;
@@ -330,8 +352,9 @@ h1 {
 
 .ecran[hidden] { display: none; }   /* sinon « display: flex » l'emporterait sur hidden */
 
+/* Le titre réclame au moins 9em : sinon les boutons passent à la ligne au lieu de l'écraser */
 header h1 {
-  flex: 1;
+  flex: 1 1 9em;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -402,6 +425,31 @@ header h1 {
   min-width: 4.5em;   /* les noms s'alignent même avec des n° de longueurs différentes */
   font-weight: var(--graisse-titre);
 }
+
+/* ===== Écrans Lots et Intervenants ===== */
+/* Contenu d'une ligne à gauche, actions discrètes (modifier, supprimer…) à droite */
+.contenuLigne {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.ligneCe { padding: 6px 0; }
+
+.liste li.ligneAjout { border: none; }
+.ligneAjout .actionElement { padding-left: 0; }   /* aligné à gauche avec les noms des CE */
+
+.sigle { text-transform: none; }   /* sigle gardé en majuscules (« CE ») dans un texte en minuscules */
+
+.blocIntervenant {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+}
+
+.nomIntervenant { font-weight: var(--graisse-titre); }
 
 .liste li.listeVide {
   border: none;
