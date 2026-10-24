@@ -133,8 +133,9 @@ header .bouton { white-space: nowrap; }
 .pastille.ouverte { background: var(--statut-ouverte); }
 .pastille.levee   { background: var(--statut-levee); }
 
-/* ===== Fiche remarque ===== */
-#fiche {
+/* ===== Fiche remarque et fenêtre « niveau du plan » ===== */
+/* « :is(#fiche, #ficheNiveau) » : la même règle vaut pour les deux fenêtres */
+:is(#fiche, #ficheNiveau) {
   width: min(92vw, 420px);
   /* Centrée dans la zone visible au-dessus du clavier (variables remplies par app.js) */
   top: var(--haut-visible, 0px);
@@ -148,7 +149,7 @@ header .bouton { white-space: nowrap; }
   color: var(--encre);
 }
 
-#fiche::backdrop { background: rgba(17, 17, 17, 0.35); }
+:is(#fiche, #ficheNiveau)::backdrop { background: rgba(17, 17, 17, 0.35); }
 
 /* PC et tablette en paysage : la fiche flotte à droite, le plan reste visible à gauche.
    Les téléphones en paysage (hauteur < 560 px) gardent la fiche au centre. */
@@ -159,7 +160,7 @@ header .bouton { white-space: nowrap; }
   }
 }
 
-#fiche h2 {
+:is(#fiche, #ficheNiveau) h2 {
   margin: 0 0 20px;
   padding-bottom: 12px;
   border-bottom: var(--trait-separation) solid var(--encre);
@@ -167,7 +168,7 @@ header .bouton { white-space: nowrap; }
   font-weight: var(--graisse-titre);
 }
 
-#fiche label {
+:is(#fiche, #ficheNiveau) label {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -191,9 +192,9 @@ header .bouton { white-space: nowrap; }
 }
 
 /* Champs sans trait ; seul le texte de la remarque est souligné d'un trait noir */
-#fiche textarea,
-#fiche input,
-#fiche select {
+:is(#fiche, #ficheNiveau) textarea,
+:is(#fiche, #ficheNiveau) input,
+:is(#fiche, #ficheNiveau) select {
   font: inherit;
   font-size: var(--taille-texte);
   color: var(--encre);
@@ -205,14 +206,14 @@ header .bouton { white-space: nowrap; }
   outline: none;
 }
 
-#fiche textarea {
+:is(#fiche, #ficheNiveau) textarea {
   resize: vertical;
   border-bottom: var(--trait-champ) solid var(--encre);
 }
 
-#fiche textarea:focus,
-#fiche input:focus,
-#fiche select:focus {
+:is(#fiche, #ficheNiveau) textarea:focus,
+:is(#fiche, #ficheNiveau) input:focus,
+:is(#fiche, #ficheNiveau) select:focus {
   border-bottom: 2px solid var(--accent);
 }
 

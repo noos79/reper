@@ -41,6 +41,18 @@ db.version(4).stores({
   lots: "id, projetId",
   ce: "id, projetId, lotId"
 });
+// Version 5 : les remarques sont liées à un niveau, un local, un lot et un CE (« chapitre »).
+// L'ancien champ libre « chapitre » (stocké dans « entreprise ») disparaît avec ses valeurs.
+db.version(5).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId",
+  lots: "id, projetId",
+  ce: "id, projetId, lotId"
+}).upgrade((tx) => tx.table("remarques").toCollection().modify((r) => { delete r.entreprise; }));
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -62,7 +74,9 @@ const COULEUR_TRAIT =
 
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
-const VERSION_EXPORT = 4;           // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE
+// 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE ;
+// 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise »
+const VERSION_EXPORT = 5;
 
 // Vérification simple d'une adresse électronique : « quelque chose@quelque chose.quelque chose »
 const ADRESSE_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,12 +101,18 @@ const fiche = el("fiche");
 const titreFiche = el("titreFiche");
 const champTexte = el("champTexte");
 const champStatut = el("champStatut");
-const champEntreprise = el("champEntreprise");
+const champNiveau = el("champNiveau");
+const champLocal = el("champLocal");
+const champLot = el("champLot");
+const champChapitre = el("champChapitre");
 const champDate = el("champDate");
 const boutonSupprimer = el("boutonSupprimer");
 const vignettes = el("vignettes");
 const choixPhoto = el("choixPhoto");
 const appareilPhoto = el("appareilPhoto");
+
+const ficheNiveau = el("ficheNiveau");
+const champNiveauPlan = el("champNiveauPlan");
 
 const editeurPhoto = el("editeurPhoto");
 const cadrePhoto = el("cadrePhoto");
@@ -107,6 +127,8 @@ let estNouvelle = false;
 let photosFiche = [];         // photos de la remarque affichée (copie de travail, enregistrée avec la fiche)
 let photosSupprimees = [];    // identifiants des photos à effacer à l'enregistrement
 let photoEnEdition = null;    // celle affichée dans l'écran d'annotation
+let listesFiche = { niveaux: [], locaux: [], lots: [], ce: [] };   // choix proposés dans la fiche
+let planEnCours = null;       // celui dont on choisit le niveau
 const imagesDecodees = new Map();   // images déjà préparées pour l'affichage (évite de les relire)
 
 // ===== Navigation entre écrans =====
@@ -147,8 +169,7 @@ async function afficherProjets() {
       projet.nom,
       "Créé le " + formaterDate(projet.creeLe),
       () => ouvrirProjet(projet),
-      () => supprimerProjet(projet),
-      () => exporterProjet(projet)
+      [["Exporter", () => exporterProjet(projet)], ["Supprimer", () => supprimerProjet(projet)]]
     ));
   }
   afficherEcran("ecranProjets");
@@ -227,8 +248,9 @@ async function importerProjet(fichierZip) {
   if (donnees.format !== FORMAT_EXPORT) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
-  // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE)
-  if (![1, 2, 3, 4].includes(donnees.version)) {
+  // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE),
+  // 5 (remarques liées aux niveaux, locaux, lots et CE)
+  if (![1, 2, 3, 4, 5].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
@@ -255,6 +277,15 @@ async function importerProjet(fichierZip) {
   if (remarquesImportees.some((r) => !idsPlans.has(r.planId))) {
     throw new Error("certaines remarques renvoient à un plan absent du fichier.");
   }
+  // Liens facultatifs (vides = non renseignés) : s'ils sont remplis, ils doivent mener quelque part
+  const idsLocaux = new Set(locauxImportes.map((l) => l.id));
+  const idsCe = new Set(ceImportes.map((c) => c.id));
+  const lienCasse = (id, ids) => id && !ids.has(id);
+  if (plans.some((p) => lienCasse(p.niveauId, idsNiveaux))
+      || remarquesImportees.some((r) => lienCasse(r.niveauId, idsNiveaux) || lienCasse(r.localId, idsLocaux)
+        || lienCasse(r.lotId, idsLots) || lienCasse(r.ceId, idsCe))) {
+    throw new Error("certains plans ou remarques renvoient à un niveau, un local, un lot ou un CE absent du fichier.");
+  }
   const idsRemarques = new Set(remarquesImportees.map((r) => r.id));
   if (photosImportees.some((p) => !idsRemarques.has(p.remarqueId))) {
     throw new Error("certaines photos renvoient à une remarque absente du fichier.");
@@ -272,7 +303,8 @@ async function importerProjet(fichierZip) {
       fichier: new Blob([octets], { type: "application/pdf" })
     });
   }
-  const remarquesAImporter = remarquesImportees.map((r) => ({ ...r, projetId: projet.id }));
+  // « entreprise » : ancien champ libre « chapitre » des versions 1 à 4, abandonné
+  const remarquesAImporter = remarquesImportees.map(({ entreprise, ...r }) => ({ ...r, projetId: projet.id }));
 
   const photosAImporter = [];
   for (const photo of photosImportees) {
@@ -346,6 +378,8 @@ async function ouvrirProjet(projet) {
   el("titreProjet").textContent = projetCourant.nom;
 
   const plans = await db.plans.where("projetId").equals(projetCourant.id).sortBy("nom");
+  const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).toArray();
+  const nomNiveau = new Map(niveaux.map((n) => [n.id, n.nom]));
 
   listePlans.replaceChildren();
   if (plans.length === 0) {
@@ -356,13 +390,14 @@ async function ouvrirProjet(projet) {
       .where("planId").equals(plan.id)
       .filter((r) => r.statut === "ouverte")
       .count();
-    const detail = ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte");
+    let detail = ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte");
+    if (nomNiveau.has(plan.niveauId)) detail = nomNiveau.get(plan.niveauId) + " · " + detail;
 
     listePlans.append(elementListe(
       plan.nom,
       detail,
       () => ouvrirPlan(plan),
-      () => supprimerPlan(plan)
+      [["niveau", () => choisirNiveauPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
     ));
   }
   afficherEcran("ecranProjet");
@@ -397,6 +432,28 @@ async function supprimerPlan(plan) {
   });
   await ouvrirProjet(projetCourant);
 }
+
+// ----- Niveau d'un plan (facultatif) : proposé d'office pour les nouvelles remarques du plan -----
+async function choisirNiveauPlan(plan) {
+  const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
+  if (niveaux.length === 0) {
+    alert("Ce projet n'a pas encore de niveaux. Importe d'abord les locaux (bouton « locaux »).");
+    return;
+  }
+  planEnCours = plan;
+  el("titreFicheNiveau").textContent = plan.nom;
+  remplirListe(champNiveauPlan, niveaux, (n) => n.nom, plan.niveauId);
+  ficheNiveau.returnValue = "";
+  ficheNiveau.showModal();
+}
+
+ficheNiveau.addEventListener("close", async () => {
+  const plan = planEnCours;
+  planEnCours = null;
+  if (ficheNiveau.returnValue !== "enregistrer") return;
+  await db.plans.update(plan.id, { niveauId: champNiveauPlan.value || null });
+  await ouvrirProjet(projetCourant);
+});
 
 // ===================================================================
 // ÉCRAN LOCAUX : NIVEAUX ET LOCAUX DU PROJET
@@ -507,15 +564,34 @@ async function importerLocaux(fichierCsv) {
 
   if (locaux.length === 0) throw new Error("aucun local trouvé dans ce fichier.");
 
-  if (anciensLocaux.length > 0 && !confirm(
-    `Remplacer les ${anciensLocaux.length} local(aux) actuels par les ${locaux.length} du fichier ?`
-  )) return;
+  // Niveaux ou locaux absents du nouveau fichier : les plans et remarques liés perdent ce lien
+  const niveauGarde = new Set(niveaux.map((n) => n.id));
+  const localGarde = new Set(locaux.map((l) => l.id));
+  const remarquesProjet = await db.remarques.where("projetId").equals(projetId).toArray();
+  const plansProjet = await db.plans.where("projetId").equals(projetId).toArray();
+  const remarquesTouchees = remarquesProjet.filter((r) =>
+    (r.niveauId && !niveauGarde.has(r.niveauId)) || (r.localId && !localGarde.has(r.localId)));
+  const plansTouches = plansProjet.filter((p) => p.niveauId && !niveauGarde.has(p.niveauId));
 
-  await db.transaction("rw", db.niveaux, db.locaux, async () => {
+  if (anciensLocaux.length > 0) {
+    let question = `Remplacer les ${anciensLocaux.length} local(aux) actuels par les ${locaux.length} du fichier ?`;
+    if (remarquesTouchees.length > 0 || plansTouches.length > 0) {
+      question += `\n\nCertains niveaux ou locaux disparaissent : ${remarquesTouchees.length} remarque(s) ` +
+        `et ${plansTouches.length} plan(s) perdront leur niveau ou leur local (le reste est conservé).`;
+    }
+    if (!confirm(question)) return;
+  }
+
+  await db.transaction("rw", db.niveaux, db.locaux, db.remarques, db.plans, async () => {
     await db.locaux.where("projetId").equals(projetId).delete();
     await db.niveaux.where("projetId").equals(projetId).delete();
     await db.niveaux.bulkAdd(niveaux);
     await db.locaux.bulkAdd(locaux);
+    for (const r of remarquesTouchees) {
+      const niveauId = niveauGarde.has(r.niveauId) ? r.niveauId : null;
+      await db.remarques.update(r.id, { niveauId, localId: niveauId && localGarde.has(r.localId) ? r.localId : null });
+    }
+    for (const p of plansTouches) await db.plans.update(p.id, { niveauId: null });
   });
 
   let message = `${niveaux.length} niveau(x) et ${locaux.length} local(aux) importés.`;
@@ -614,14 +690,23 @@ async function modifierLot(lot) {
 }
 
 async function supprimerLot(lot) {
-  if (!confirm(`Supprimer le ${libelleLot(lot)}, ses CE et leurs entreprises ?`)) return;
+  const liees = await remarquesLiees((r) => r.lotId === lot.id);
+  let question = `Supprimer le ${libelleLot(lot)}, ses CE et leurs entreprises ?`;
+  if (liees.length > 0) question += `\n\n${liees.length} remarque(s) perdront leur lot et leur chapitre.`;
+  if (!confirm(question)) return;
 
-  // Transaction : jamais de CE sans son lot
-  await db.transaction("rw", db.lots, db.ce, async () => {
+  // Transaction : jamais de CE sans son lot, ni de remarque liée à un lot disparu
+  await db.transaction("rw", db.lots, db.ce, db.remarques, async () => {
     await db.ce.where("lotId").equals(lot.id).delete();
     await db.lots.delete(lot.id);
+    for (const r of liees) await db.remarques.update(r.id, { lotId: null, ceId: null });
   });
   await ouvrirLots();
+}
+
+// Remarques du projet qui répondent à une condition (ex. liées à un lot)
+function remarquesLiees(condition) {
+  return db.remarques.where("projetId").equals(projetCourant.id).filter(condition).toArray();
 }
 
 function nouveauCe(lot, nom, ordre) {
@@ -657,9 +742,15 @@ async function supprimerCe(ce, ceDuLot) {
     alert("Un lot compte au moins un CE. Pour retirer celui-ci, supprime le lot.");
     return;
   }
-  if (!confirm(`Supprimer le CE « ${ce.nom} » et son sous-traitant ?`)) return;
+  const liees = await remarquesLiees((r) => r.ceId === ce.id);
+  let question = `Supprimer le CE « ${ce.nom} » et son sous-traitant ?`;
+  if (liees.length > 0) question += `\n\n${liees.length} remarque(s) perdront leur chapitre (elles gardent leur lot).`;
+  if (!confirm(question)) return;
 
-  await db.ce.delete(ce.id);
+  await db.transaction("rw", db.ce, db.remarques, async () => {
+    await db.ce.delete(ce.id);
+    for (const r of liees) await db.remarques.update(r.id, { ceId: null });
+  });
   await ouvrirLots();
 }
 
@@ -844,7 +935,10 @@ function poserRemarque(clientX, clientY) {
     y,
     texte: "",
     statut: "ouverte",
-    entreprise: "",
+    niveauId: planCourant.niveauId || null,   // le niveau du plan, s'il en a un
+    localId: null,
+    lotId: null,
+    ceId: null,
     date: aujourdhui()
   }, true);
 }
@@ -857,8 +951,20 @@ async function ouvrirFiche(remarque, nouvelle) {
   titreFiche.textContent = "Remarque n° " + remarque.numero;
   champTexte.value = remarque.texte;
   champStatut.value = remarque.statut;
-  champEntreprise.value = remarque.entreprise;
   champDate.value = remarque.date;
+
+  // Choix proposés, relus à chaque ouverture (ils ont pu changer sur les écrans Locaux et Lots)
+  const projetId = projetCourant.id;
+  listesFiche = {
+    niveaux: await db.niveaux.where("projetId").equals(projetId).sortBy("ordre"),
+    locaux: await db.locaux.where("projetId").equals(projetId).sortBy("ordre"),
+    lots: await lotsDuProjet(),
+    ce: await ceDuProjet()
+  };
+  remplirListe(champNiveau, listesFiche.niveaux, (n) => n.nom, remarque.niveauId);
+  remplirLocaux(remarque.localId);
+  remplirListe(champLot, listesFiche.lots, (l) => `${l.numero} · ${l.nom}`, remarque.lotId);
+  remplirChapitres(remarque.ceId);
   boutonSupprimer.hidden = nouvelle;
 
   // Copie de travail des photos : rien n'est écrit dans la base avant « enregistrer »
@@ -870,6 +976,27 @@ async function ouvrirFiche(remarque, nouvelle) {
   fiche.showModal();
 }
 
+// Local : liste réduite aux locaux du niveau choisi, chacun affiché avec son n°
+function remplirLocaux(localId) {
+  const niveauId = champNiveau.value;
+  const locauxDuNiveau = listesFiche.locaux.filter((l) => l.niveauId === niveauId);
+  remplirListe(champLocal, locauxDuNiveau, (l) => [l.numero, l.nom].filter(Boolean).join(" · "), localId);
+  champLocal.disabled = !niveauId;
+}
+
+// Chapitre (CE) : liste réduite aux CE du lot choisi ; un lot à un seul CE le choisit d'office
+function remplirChapitres(ceId) {
+  const lotId = champLot.value;
+  const ceDuLot = listesFiche.ce.filter((c) => c.lotId === lotId);
+  const parDefaut = ceDuLot.length === 1 ? ceDuLot[0].id : null;
+  remplirListe(champChapitre, ceDuLot, (c) => c.nom, ceId || parDefaut);
+  champChapitre.disabled = !lotId;
+}
+
+// Changer de niveau ou de lot vide le choix qui en dépend
+champNiveau.addEventListener("change", () => remplirLocaux(null));
+champLot.addEventListener("change", () => remplirChapitres(null));
+
 fiche.addEventListener("close", async () => {
   const action = fiche.returnValue;
   const remarque = remarqueEnCours;
@@ -878,7 +1005,10 @@ fiche.addEventListener("close", async () => {
   if (action === "enregistrer") {
     remarque.texte = champTexte.value.trim();
     remarque.statut = champStatut.value;
-    remarque.entreprise = champEntreprise.value.trim();
+    remarque.niveauId = champNiveau.value || null;   // choix « — » = non renseigné
+    remarque.localId = champLocal.value || null;
+    remarque.lotId = champLot.value || null;
+    remarque.ceId = champChapitre.value || null;
     remarque.date = champDate.value;
 
     // Transaction : la remarque, ses photos et le compteur sont enregistrés ensemble
@@ -1133,8 +1263,8 @@ function dessinerPastilles() {
 // ===================================================================
 // OUTILS
 // ===================================================================
-// « quandExporter » est facultatif : sans lui, pas de bouton « Exporter »
-function elementListe(titre, detail, quandOuvrir, quandSupprimer, quandExporter) {
+// Ligne ouvrable (titre et détail) suivie d'actions discrètes [texte, fonction]
+function elementListe(titre, detail, quandOuvrir, actions) {
   const li = document.createElement("li");
 
   const ouvrir = document.createElement("button");
@@ -1150,9 +1280,16 @@ function elementListe(titre, detail, quandOuvrir, quandSupprimer, quandExporter)
 
   li.append(ouvrir);
 
-  if (quandExporter) li.append(boutonAction("Exporter", quandExporter));
-  li.append(boutonAction("Supprimer", quandSupprimer));
+  for (const [texte, quandToucher] of actions) li.append(boutonAction(texte, quandToucher));
   return li;
+}
+
+// Remplit une liste déroulante : un premier choix « — » (non renseigné), puis un choix par élément
+function remplirListe(liste, elements, libelle, valeur) {
+  liste.replaceChildren(new Option("—", ""));
+  for (const element of elements) liste.append(new Option(libelle(element), element.id));
+  liste.value = valeur || "";
+  if (liste.selectedIndex === -1) liste.value = "";   // valeur disparue : « — »
 }
 
 // Action discrète d'une ligne de liste (texte gris seul)
@@ -1283,7 +1420,13 @@ afficherProjets();
 
 // Fonctionnement hors ligne : le service worker garde une copie de l'application (voir sw.js)
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js");
+  const enregistrement = navigator.serviceWorker.register("./sw.js");
+
+  // Chrome ne cherche une nouvelle version qu'à l'ouverture d'une page. Une application remise au
+  // premier plan sans être rechargée ne la verrait pas : on lui demande alors de vérifier.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") enregistrement.then((e) => e.update()).catch(() => {});
+  });
 
   // Le service worker annonce sa version quand il prend la main. Si elle diffère de celle de
   // cette page (le « ?v=N » de app.js), une nouvelle version a été reçue : on propose de recharger.

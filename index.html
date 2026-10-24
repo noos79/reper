@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=17">
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/charte.css?v=18">
+  <link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body>
 
@@ -119,8 +119,21 @@
           </select>
         </label>
 
+        <!-- Local : réduit aux locaux du niveau ; chapitre (CE) : réduit aux CE du lot -->
+        <label><span class="etiquette">niveau</span>
+          <select id="champNiveau"></select>
+        </label>
+
+        <label><span class="etiquette">local</span>
+          <select id="champLocal"></select>
+        </label>
+
+        <label><span class="etiquette">lot</span>
+          <select id="champLot"></select>
+        </label>
+
         <label><span class="etiquette">chapitre</span>
-          <input id="champEntreprise" type="text">
+          <select id="champChapitre"></select>
         </label>
 
         <label><span class="etiquette">date</span>
@@ -148,6 +161,20 @@
     </form>
   </dialog>
 
+  <!-- Niveau d'un plan (facultatif) -->
+  <dialog id="ficheNiveau">
+    <form method="dialog">
+      <h2 id="titreFicheNiveau">Plan</h2>
+      <label><span class="etiquette">niveau</span>
+        <select id="champNiveauPlan"></select>
+      </label>
+      <div class="boutonsFiche">
+        <button value="enregistrer" class="principal">Enregistrer</button>
+        <button value="annuler" formnovalidate>Annuler</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Annotation d'une photo : trait rouge au doigt -->
   <dialog id="editeurPhoto">
     <header>
@@ -168,6 +195,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=17"></script>
+  <script type="module" src="js/app.js?v=18"></script>
 </body>
 </html>

@@ -43,7 +43,8 @@ modification doit rester compréhensible et maintenable par lui.
   tous les autres fichiers sont servis depuis le cache. Une mise à jour apparaît donc au plus tard
   à la deuxième ouverture. Quand un nouveau service worker prend la main, il envoie sa `VERSION` aux
   pages ouvertes ; si elle diffère du `?v=N` de `app.js`, un bandeau « nouvelle version disponible »
-  propose de recharger.
+  propose de recharger. Chrome ne cherchant une nouvelle version qu'à l'ouverture d'une page,
+  `app.js` lui demande aussi de vérifier quand l'application revient au premier plan (`visibilitychange`).
 - **Installation** : bouton « installer » sur l'écran Projets, caché par défaut, affiché seulement quand
   Chrome envoie `beforeinstallprompt` (application installable et pas encore installée).
 - Appareils cibles : **Android (Chrome) et PC Windows (Chrome)**. iPhone et iPad non testés en V1.
@@ -54,9 +55,10 @@ Base IndexedDB `suiviChantier`, via Dexie :
 
 ```
 projets:   "id, nom"            // id, nom, creeLe, dernierNumero
-plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page
+plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId (facultatif)
 remarques: "id, planId, projetId"
-           // id, projetId, planId, numero, x, y, texte, statut, entreprise, date
+           // id, projetId, planId, numero, x, y, texte, statut, date,
+           // niveauId, localId, lotId, ceId (facultatifs : null = non renseigné)
 photos:    "id, remarqueId, planId, projetId"          (depuis la version 2 du schéma)
            // id, projetId, planId, remarqueId, image (Blob JPEG), largeur, hauteur, traits, ajouteeLe
 niveaux:   "id, projetId"                              (depuis la version 3 du schéma)
@@ -71,7 +73,8 @@ ce:        "id, projetId, lotId"                       (depuis la version 4 du s
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **4**.
+  une version existante : des appareils ont déjà des données. Version actuelle : **5** (sa mise à niveau
+  retire le champ `entreprise` des remarques).
 - **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
   (ignorée), encodage UTF-8 (« CSV UTF-8 » d'Excel) ou Windows-1252 (« CSV séparateur point-virgule »),
   reconnu automatiquement. Lignes sans niveau ou sans n°, et doublons (même niveau et même n°), ignorés et
@@ -84,8 +87,14 @@ Décisions à respecter :
   même lot ne portent pas le même nom. Supprimer un lot supprime ses CE (transaction).
 - **Intervenants** : `entreprise` et `courriel` (facultatifs) sur le lot = l'adjudicataire ; sur le CE =
   le sous-traitant éventuel. Un nom vide retire l'entreprise et son adresse ; adresse vérifiée
-  simplement (`ADRESSE_VALIDE`). À ne pas confondre avec le champ `entreprise` des remarques (« chapitre »
-  libre, appelé à disparaître à l'étape 9c).
+  simplement (`ADRESSE_VALIDE`).
+- **Liens des remarques** (`niveauId`, `localId`, `lotId`, `ceId`) : le local sert seulement au tri et au
+  filtre ; il est indépendant de la numérotation. Un plan peut avoir un `niveauId`, proposé d'office pour
+  ses nouvelles remarques (changer le niveau du plan ne modifie pas les remarques existantes).
+- **Suppression d'un élément lié** : la remarque est gardée et **perd seulement le lien**, après un
+  avertissement qui donne le nombre de remarques touchées, dans la même transaction. Lot supprimé → lot et
+  chapitre retirés ; CE supprimé → chapitre retiré (lot gardé) ; réimport des locaux → niveau ou local
+  disparus retirés des remarques et des plans.
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
   **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
   liste de points `[x, y]` **en proportion de l'image (0 à 1)**. Couleur : `--trait-annotation`.
@@ -99,10 +108,11 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 4**, avec `niveaux`, `locaux`, `lots`
-  et `ce`) +
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 5**, avec `niveaux`, `locaux`, `lots`
+  et `ce` ; remarques avec leurs liens) +
   `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
-  3 (sans lots) et 4. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
+  3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import) et 5. Un lien rempli qui ne
+  mène nulle part refuse l'import. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
   chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
   bases séparées). Pas de synchronisation en V1.
@@ -111,7 +121,8 @@ Décisions à respecter :
 
 Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
 1. **Projets** : liste, création, suppression, export, import.
-2. **Projet** : liste des plans (avec le nombre de remarques ouvertes), ajout d'un PDF, suppression ;
+2. **Projet** : liste des plans (niveau éventuel et nombre de remarques ouvertes), ajout d'un PDF,
+   « niveau » (petite fenêtre `ficheNiveau` avec une liste), suppression ;
    boutons « locaux » et « lots ».
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
    - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
@@ -123,9 +134,12 @@ Décisions à respecter :
    cliquables ouvrant la fiche remarque (`<dialog>`).
 
 Fiche remarque : « description » (étiquette au-dessus du champ), puis une grille à deux colonnes
-(`grilleFiche`) : « statut », « chapitre » et « date » avec l'étiquette et le champ sur la même ligne ;
-« photos » (étiquette, vignettes en dessous). Les quatre étiquettes ont la largeur de la plus longue.
-« Chapitre » = **CE** (corps d'exécution) ; pour l'instant champ libre, stocké dans le champ `entreprise` des données. Zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
+(`grilleFiche`) : « statut », « niveau », « local », « lot », « chapitre » et « date » avec l'étiquette et
+le champ sur la même ligne ; « photos » (étiquette, vignettes en dessous). Les étiquettes ont la largeur de
+la plus longue. Listes déroulantes avec un premier choix « — » (non renseigné) : « local » réduit aux
+locaux du niveau (affichés « n° · nom ») ; « chapitre » = **CE**, réduit aux CE du lot, choisi d'office
+si le lot n'en a qu'un. Changer de niveau ou de lot vide le choix qui en dépend. Les entreprises
+n'apparaissent pas dans la fiche. Zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
 sélecteur de photos des Android récents ne propose plus l'appareil photo : « prendre une photo » utilise
 `capture="environment"` pour l'ouvrir directement. Une
 vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
@@ -215,13 +229,13 @@ Fait :
      rapports) et, si besoin, un sous-traitant par CE ; chacun avec son adresse électronique
      (facultative). Les entreprises n'apparaissent **ni dans la fiche ni dans la liste des remarques** ;
      schéma 4, export version 4.
-
-À faire, dans cet ordre :
-   - **9c** : un plan peut être lié à un niveau (facultatif) ; fiche : niveau → local (liste réduite au
+   - **9c (fait)** : un plan peut être lié à un niveau (facultatif) ; fiche : niveau → local (liste réduite au
      niveau, n° rempli automatiquement, sert seulement au tri et au filtre) ; lot → CE, affiché
      « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ `entreprise` des
      données) disparaît **avec ses valeurs** (décision : pas de reprise, pas encore de vraies données).
-     À prévoir : que deviennent les remarques liées quand on supprime un lot, un CE ou un local.
+     Schéma 5, export version 5.
+
+À faire, dans cet ordre :
 10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
     Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
     nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet
