@@ -46,7 +46,8 @@ header .actions {
 header .bouton { white-space: nowrap; }
 
 /* Écran Plan : en-tête toujours sur une ligne, pour laisser au plan toute la hauteur possible */
-#ecranPlan header { flex-wrap: nowrap; }
+#ecranPlan header,
+#ecranPlan header .actions { flex-wrap: nowrap; }
 
 /* Bouton de la charte : pastille noire, texte blanc en police à chasse fixe, minuscules */
 .bouton,
@@ -111,6 +112,104 @@ header .bouton { white-space: nowrap; }
   border: 1px solid var(--trait);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* ===== Contours des locaux (mode « contours ») ===== */
+#calqueContours {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;   /* les touches passent au plan en dessous */
+}
+
+/* « non-scaling-stroke » : trait de même épaisseur quel que soit le zoom */
+.contour,
+.contourEnCours {
+  fill: none;
+  stroke: var(--encre);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.contour.choisi {
+  fill: var(--selection);
+  fill-opacity: 0.45;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.contourEnCours {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+/* Coins, n° des locaux : taille constante quel que soit le zoom, comme les pastilles */
+.coinContour,
+.nomContour {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(calc(1 / var(--echelle)));
+}
+
+.coinContour {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Premier coin : anneau plus grand, là où l'on touche pour fermer le contour */
+.coinContour.premier {
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 3px solid var(--accent);
+}
+
+.nomContour {
+  padding: 1px 5px;
+  border-radius: var(--arrondi-pilule);
+  background: var(--surface);
+  color: var(--encre);
+  font: var(--graisse-titre) 12px var(--police-texte);
+  white-space: nowrap;
+}
+
+.modeContours .pastille { display: none; }   /* pas de pastilles pendant le dessin */
+
+.barreContours {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: var(--trait-separation) solid var(--encre);
+  background: var(--surface);
+}
+
+.barreContours[hidden],
+.barreContours .bouton[hidden] { display: none; }
+
+.aideContours {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--encre-douce);
+}
+
+.barreContours select {
+  flex: 1 1 10em;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--taille-texte);
+  color: var(--encre);
+  padding: 6px 0;
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  outline: none;
 }
 
 /* ===== Pastilles ===== */

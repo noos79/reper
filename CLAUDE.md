@@ -74,12 +74,14 @@ lots:      "id, projetId"                              (depuis la version 4 du s
            // id, projetId, numero, nom, entreprise, courriel
 ce:        "id, projetId, lotId"                       (depuis la version 4 du schéma)
            // id, projetId, lotId, nom, ordre, entreprise, courriel
+contours:  "id, projetId, planId, localId"            (depuis la version 6 du schéma)
+           // id, projetId, planId, localId, points (liste de coins [x, y] en proportion du plan)
 ```
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **5** (sa mise à niveau
-  retire le champ `entreprise` des remarques).
+  une version existante : des appareils ont déjà des données. Version actuelle : **6** (la version 5 a
+  retiré le champ `entreprise` des remarques).
 - **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
   (ignorée), encodage UTF-8 (« CSV UTF-8 » d'Excel) ou Windows-1252 (« CSV séparateur point-virgule »),
   reconnu automatiquement. Lignes sans niveau ou sans n°, et doublons (même niveau et même n°), ignorés et
@@ -101,6 +103,12 @@ Décisions à respecter :
   avertissement qui donne le nombre de remarques touchées, dans la même transaction. Lot supprimé → lot et
   chapitre retirés des remarques, lot retiré des plans ; CE supprimé → chapitre retiré (lot gardé) ; réimport des locaux → niveau ou local
   disparus retirés des remarques et des plans.
+- **Contours des locaux** : un contour par local et par plan (le même local peut avoir un contour sur
+  plusieurs plans), coins **en proportion du plan (0 à 1)**, arrondis à 4 décimales. À la pose d'une
+  pastille, le contour qui contient le point donne le niveau et le local (s'ils se chevauchent : le plus
+  petit) ; hors contour, le niveau du plan. Les remarques déjà posées ne sont pas modifiées. Supprimer
+  un plan supprime ses contours ; un réimport des locaux efface les contours des locaux disparus (après
+  avertissement), les autres survivent car les locaux gardent leur `id`.
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
   **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
   liste de points `[x, y]` **en proportion de l'image (0 à 1)**. Couleur : `--trait-annotation`.
@@ -114,10 +122,10 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 5**, avec `niveaux`, `locaux`, `lots`
-  et `ce` ; remarques avec leurs liens) +
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 6**, avec `niveaux`, `locaux`, `lots`,
+  `ce` et `contours` ; remarques avec leurs liens) +
   `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
-  3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import) et 5. Un lien rempli qui ne
+  3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import), 5 (sans contours) et 6. Un lien rempli qui ne
   mène nulle part refuse l'import. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
   chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
@@ -137,7 +145,17 @@ Décisions à respecter :
    - **Intervenants** (`ecranIntervenants`, retour vers Lots) : par lot, « entreprise du lot » puis chaque
      CE avec son sous-traitant ; « modifier » demande le nom puis l'adresse électronique.
 3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
-   cliquables ouvrant la fiche remarque (`<dialog>`).
+   cliquables ouvrant la fiche remarque (`<dialog>`). En-tête toujours sur une ligne : « contours »,
+   « recadrer » (remet le plan en entier dans la zone visible, barre des contours comprise).
+   - **Mode contours** (bouton « contours », qui sert aussi à en sortir, comme « terminé ») : barre en
+     bas (`barreContours`) avec une aide, la liste des locaux (ceux du niveau du plan, sinon tous,
+     groupés par niveau ; « ✓ » = déjà dessiné sur ce plan), « annuler le point » (pendant le dessin),
+     « effacer le contour » (local déjà dessiné), « terminé ». L'application propose le premier local
+     sans contour ; une touche brève pose un coin (glisser déplace le plan, l'appui long ne pose pas de
+     remarque) ; toucher à nouveau le premier coin (à `DISTANCE_FERMETURE` près, 3 coins au moins) ferme
+     et enregistre le contour, puis passe au local suivant sans contour. Redessiner un local déjà dessiné
+     demande confirmation. Les pastilles sont cachées pendant le dessin ; les contours (calque SVG
+     `calqueContours`, n° du local au milieu) ne sont visibles **qu'en mode contours**.
 
 Fiche remarque : « description » (étiquette au-dessus du champ), puis une grille à deux colonnes
 (`grilleFiche`) : « statut », « niveau », « local », « lot », « chapitre » et « date » avec l'étiquette et
@@ -246,11 +264,12 @@ Fait :
     été réalisée puis écartée, car elle alourdissait la saisie (une liste de plus dans la fiche, et des
     listes qui grossissent à chaque texte saisi) : contraire au principe directeur. Le propriétaire y
     reviendra peut-être sous une autre forme. Le travail est conservé dans la branche locale
-    `etape-10-bibliotheque` (non envoyée sur GitHub).
+    `etape-10-bibliotheque` (non envoyée sur GitHub). Attention : il y utilise la version 6 du schéma et
+    de l'export, prise depuis par les contours ; à renuméroter s'il est repris.
+11. **(fait)** Contours des locaux dessinés sur le plan (en proportion 0 à 1) ; à la pose d'une pastille,
+    niveau et local (n° et nom) remplis automatiquement. Schéma 6, export version 6.
 
 À faire, dans cet ordre :
-11. Contours des locaux dessinés sur le plan (en proportion 0 à 1) ; à la pose d'une pastille, niveau,
-    n° et nom du local remplis automatiquement.
 12. Mise à jour d'un plan sans perdre les remarques : l'ancienne version reçoit un **indice** (A, B…)
     et reste consultable, avec possibilité de la supprimer ; recalage par deux points (repères touchés
     sur l'ancien puis le nouveau plan) ; déplacement d'une pastille au doigt ; contours redessinables ;

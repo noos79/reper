@@ -54,6 +54,7 @@
   --statut-levee: var(--aasa-vert);
   --accent: var(--aasa-turquoise);   /* soulignement du champ en saisie */
   --trait-annotation: #E30613;       /* rouge des traits dessinés sur les photos */
+  --selection: var(--aasa-turquoise-clair);   /* fond d'un élément choisi (contour du local à dessiner) */
 
   /* ----- Boutons et étiquettes : pastille noire, texte blanc ----- */
   --bouton-fond: var(--encre);

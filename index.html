@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=19">
-  <link rel="stylesheet" href="css/style.css?v=19">
+  <link rel="stylesheet" href="css/charte.css?v=20">
+  <link rel="stylesheet" href="css/style.css?v=20">
 </head>
 <body>
 
@@ -90,14 +90,25 @@
       <button id="retourProjet" class="bouton" aria-label="Retour au projet"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
       <h1 id="titrePlan"></h1>
       <div class="actions">
+        <button id="modeContours" class="bouton secondaire">contours</button>
         <button id="recadrer" class="bouton">Recadrer</button>
       </div>
     </header>
     <main id="cadrePlan">
       <div id="contenuPlan">
         <canvas id="canevasPlan"></canvas>
+        <!-- Contours des locaux, en proportion du plan (0 à 1) : visibles en mode « contours » seulement -->
+        <svg id="calqueContours" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
       </div>
     </main>
+    <!-- Mode « contours » : local à dessiner et commandes -->
+    <div id="barreContours" class="barreContours" hidden>
+      <span class="aideContours">Touche chaque coin du local, puis à nouveau le premier pour fermer.</span>
+      <select id="choixLocalContour" aria-label="Local à dessiner"></select>
+      <button type="button" id="annulerPoint" class="bouton secondaire">annuler le point</button>
+      <button type="button" id="effacerContour" class="bouton secondaire">effacer le contour</button>
+      <button type="button" id="finContours" class="bouton">terminé</button>
+    </div>
   </section>
 
   <!-- Fiche remarque -->
@@ -200,6 +211,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=19"></script>
+  <script type="module" src="js/app.js?v=20"></script>
 </body>
 </html>

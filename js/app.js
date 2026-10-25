@@ -53,6 +53,18 @@ db.version(5).stores({
   lots: "id, projetId",
   ce: "id, projetId, lotId"
 }).upgrade((tx) => tx.table("remarques").toCollection().modify((r) => { delete r.entreprise; }));
+// Version 6 : contours des locaux dessinés sur les plans
+db.version(6).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId",
+  lots: "id, projetId",
+  ce: "id, projetId, lotId",
+  contours: "id, projetId, planId, localId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -64,6 +76,7 @@ const QUALITE = 2;
 const PIXELS_MAX = 16_000_000;
 const DUREE_APPUI_LONG = 600;
 const TOLERANCE_MOUVEMENT = 10;
+const DISTANCE_FERMETURE = 24;     // pixels à l'écran : toucher aussi près du premier coin ferme le contour
 
 // Photos : réduites à l'ajout pour ne pas alourdir la base et les exports
 const PHOTO_COTE_MAX = 1600;        // pixels, sur le plus grand côté
@@ -75,8 +88,9 @@ const COULEUR_TRAIT =
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
 // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE ;
-// 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise »
-const VERSION_EXPORT = 5;
+// 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise » ;
+// 6 : contours des locaux sur les plans
+const VERSION_EXPORT = 6;
 
 // Vérification simple d'une adresse électronique : « quelque chose@quelque chose.quelque chose »
 const ADRESSE_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -140,7 +154,10 @@ function afficherEcran(idEcran) {
 }
 
 el("retourProjets").addEventListener("click", afficherProjets);
-el("retourProjet").addEventListener("click", () => ouvrirProjet(projetCourant));
+el("retourProjet").addEventListener("click", () => {
+  quitterModeContours();
+  ouvrirProjet(projetCourant);
+});
 
 // ===================================================================
 // ÉCRAN 1 : PROJETS
@@ -187,6 +204,7 @@ async function exporterProjet(projet) {
     const locauxProjet = await db.locaux.where("projetId").equals(projet.id).toArray();
     const lotsProjet = await db.lots.where("projetId").equals(projet.id).toArray();
     const ceProjet = await db.ce.where("projetId").equals(projet.id).toArray();
+    const contoursProjet = await db.contours.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
@@ -202,7 +220,8 @@ async function exporterProjet(projet) {
       niveaux: niveauxProjet,
       locaux: locauxProjet,
       lots: lotsProjet,
-      ce: ceProjet
+      ce: ceProjet,
+      contours: contoursProjet
     }, null, 2));
 
     for (const plan of plans) {
@@ -250,8 +269,8 @@ async function importerProjet(fichierZip) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
   // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE),
-  // 5 (remarques liées aux niveaux, locaux, lots et CE)
-  if (![1, 2, 3, 4, 5].includes(donnees.version)) {
+  // 5 (remarques liées aux niveaux, locaux, lots et CE), 6 (avec contours des locaux)
+  if (![1, 2, 3, 4, 5, 6].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
@@ -260,10 +279,11 @@ async function importerProjet(fichierZip) {
   const locauxImportes = donnees.locaux || [];
   const lotsImportes = donnees.lots || [];        // absents avant la version 4
   const ceImportes = donnees.ce || [];
+  const contoursImportes = donnees.contours || [];   // absents avant la version 6
   if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
       || !Array.isArray(photosImportees) || !Array.isArray(niveauxImportes)
       || !Array.isArray(locauxImportes) || !Array.isArray(lotsImportes)
-      || !Array.isArray(ceImportes)) {
+      || !Array.isArray(ceImportes) || !Array.isArray(contoursImportes)) {
     throw new Error("le fichier projet.json est incomplet.");
   }
   const idsLots = new Set(lotsImportes.map((l) => l.id));
@@ -286,6 +306,9 @@ async function importerProjet(fichierZip) {
       || remarquesImportees.some((r) => lienCasse(r.niveauId, idsNiveaux) || lienCasse(r.localId, idsLocaux)
         || lienCasse(r.lotId, idsLots) || lienCasse(r.ceId, idsCe))) {
     throw new Error("certains plans ou remarques renvoient à un niveau, un local, un lot ou un CE absent du fichier.");
+  }
+  if (contoursImportes.some((c) => !idsPlans.has(c.planId) || !idsLocaux.has(c.localId))) {
+    throw new Error("certains contours renvoient à un plan ou un local absent du fichier.");
   }
   const idsRemarques = new Set(remarquesImportees.map((r) => r.id));
   if (photosImportees.some((p) => !idsRemarques.has(p.remarqueId))) {
@@ -337,6 +360,7 @@ async function importerProjet(fichierZip) {
     await db.locaux.bulkAdd(locauxImportes.map((l) => ({ ...l, projetId: projet.id })));
     await db.lots.bulkAdd(lotsImportes.map((l) => ({ ...l, projetId: projet.id })));
     await db.ce.bulkAdd(ceImportes.map((c) => ({ ...c, projetId: projet.id })));
+    await db.contours.bulkAdd(contoursImportes.map((c) => ({ ...c, projetId: projet.id })));
   });
 
   alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
@@ -357,7 +381,8 @@ async function supprimerProjet(projet) {
 
 // Toutes les tables qui contiennent des données d'un projet (pour les transactions)
 function tablesDuProjet() {
-  return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux, db.lots, db.ce];
+  return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux, db.lots, db.ce,
+    db.contours];
 }
 
 // Efface le contenu d'un projet (pas le projet lui-même). À appeler dans une transaction.
@@ -369,6 +394,7 @@ async function viderProjet(projetId) {
   await db.niveaux.where("projetId").equals(projetId).delete();
   await db.ce.where("projetId").equals(projetId).delete();
   await db.lots.where("projetId").equals(projetId).delete();
+  await db.contours.where("projetId").equals(projetId).delete();
 }
 
 // ===================================================================
@@ -432,9 +458,10 @@ choixPdf.addEventListener("change", async () => {
 async function supprimerPlan(plan) {
   if (!confirm(`Supprimer le plan « ${plan.nom} », ses remarques et leurs photos ?`)) return;
 
-  await db.transaction("rw", db.plans, db.remarques, db.photos, async () => {
+  await db.transaction("rw", db.plans, db.remarques, db.photos, db.contours, async () => {
     await db.photos.where("planId").equals(plan.id).delete();
     await db.remarques.where("planId").equals(plan.id).delete();
+    await db.contours.where("planId").equals(plan.id).delete();
     await db.plans.delete(plan.id);
   });
   await ouvrirProjet(projetCourant);
@@ -585,6 +612,8 @@ async function importerLocaux(fichierCsv) {
   const remarquesTouchees = remarquesProjet.filter((r) =>
     (r.niveauId && !niveauGarde.has(r.niveauId)) || (r.localId && !localGarde.has(r.localId)));
   const plansTouches = plansProjet.filter((p) => p.niveauId && !niveauGarde.has(p.niveauId));
+  const contoursProjet = await db.contours.where("projetId").equals(projetId).toArray();
+  const contoursEffaces = contoursProjet.filter((c) => !localGarde.has(c.localId));
 
   if (anciensLocaux.length > 0) {
     let question = `Remplacer les ${anciensLocaux.length} local(aux) actuels par les ${locaux.length} du fichier ?`;
@@ -592,10 +621,13 @@ async function importerLocaux(fichierCsv) {
       question += `\n\nCertains niveaux ou locaux disparaissent : ${remarquesTouchees.length} remarque(s) ` +
         `et ${plansTouches.length} plan(s) perdront leur niveau ou leur local (le reste est conservé).`;
     }
+    if (contoursEffaces.length > 0) {
+      question += `\n\n${contoursEffaces.length} contour(s) de locaux disparus seront effacés des plans.`;
+    }
     if (!confirm(question)) return;
   }
 
-  await db.transaction("rw", db.niveaux, db.locaux, db.remarques, db.plans, async () => {
+  await db.transaction("rw", db.niveaux, db.locaux, db.remarques, db.plans, db.contours, async () => {
     await db.locaux.where("projetId").equals(projetId).delete();
     await db.niveaux.where("projetId").equals(projetId).delete();
     await db.niveaux.bulkAdd(niveaux);
@@ -605,6 +637,7 @@ async function importerLocaux(fichierCsv) {
       await db.remarques.update(r.id, { niveauId, localId: niveauId && localGarde.has(r.localId) ? r.localId : null });
     }
     for (const p of plansTouches) await db.plans.update(p.id, { niveauId: null });
+    await db.contours.bulkDelete(contoursEffaces.map((c) => c.id));
   });
 
   let message = `${niveaux.length} niveau(x) et ${locaux.length} local(aux) importés.`;
@@ -848,7 +881,15 @@ async function modifierIntervenant(table, element, question) {
 // ===================================================================
 const panzoom = Panzoom(contenu, { minScale: 0.5, maxScale: 6, step: 0.3 });
 cadre.addEventListener("wheel", panzoom.zoomWithWheel);
-el("recadrer").addEventListener("click", () => panzoom.reset());
+el("recadrer").addEventListener("click", recadrer);
+
+// Remet le plan en entier dans la zone visible. En mode contours, la barre du bas réduit cette zone :
+// le plan est alors réduit d'autant, pour que son bas ne passe pas sous la barre.
+function recadrer() {
+  panzoom.reset({ animate: false });
+  const echelle = Math.min(1, cadre.clientWidth / canevas.offsetWidth, cadre.clientHeight / canevas.offsetHeight);
+  if (echelle < 1) panzoom.zoom(echelle, { animate: false });
+}
 
 contenu.addEventListener("panzoomchange", (e) => {
   contenu.style.setProperty("--echelle", e.detail.scale);
@@ -860,7 +901,9 @@ async function ouvrirPlan(plan) {
   planCourant = plan;
   el("titrePlan").textContent = plan.nom;
 
+  quitterModeContours();
   remarques = [];
+  contoursPlan = [];
   dessinerPastilles();         // efface les pastilles du plan précédent
 
   // L'écran doit être visible AVANT de dessiner : un élément caché a une taille nulle
@@ -873,6 +916,9 @@ async function ouvrirPlan(plan) {
     await afficherPage(page);
 
     remarques = await db.remarques.where("planId").equals(plan.id).toArray();
+    contoursPlan = await db.contours.where("planId").equals(plan.id).toArray();
+    niveauxProjet = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
+    locauxProjet = await db.locaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
     dessinerPastilles();
   } catch (erreur) {
     alert("Impossible d'ouvrir ce plan : " + erreur.message);
@@ -912,7 +958,7 @@ let pointDepart = null;
 
 contenu.addEventListener("pointerdown", (e) => {
   if (!e.isPrimary) { annulerAppui(); return; }
-  if (e.target !== canevas) return;
+  if (e.target !== canevas || modeContours) return;   // en mode contours, toucher dessine
   pointDepart = { x: e.clientX, y: e.clientY };
   minuteur = setTimeout(() => {
     minuteur = null;
@@ -943,6 +989,10 @@ function poserRemarque(clientX, clientY) {
 
   if (navigator.vibrate) navigator.vibrate(30);
 
+  // Pastille posée dans le contour d'un local : niveau et local remplis d'office
+  const contour = contourSous(x, y);
+  const local = contour && locauxProjet.find((l) => l.id === contour.localId);
+
   ouvrirFiche({
     id: crypto.randomUUID(),
     projetId: projetCourant.id,
@@ -952,12 +1002,276 @@ function poserRemarque(clientX, clientY) {
     y,
     texte: "",
     statut: "ouverte",
-    niveauId: planCourant.niveauId || null,   // le niveau du plan, s'il en a un
-    localId: null,
+    niveauId: local ? local.niveauId : (planCourant.niveauId || null),   // sinon le niveau du plan
+    localId: local ? local.id : null,
     lotId: planCourant.lotId || null,         // le lot du plan, s'il en a un (et son CE s'il est seul)
     ceId: null,
     date: aujourdhui()
   }, true);
+}
+
+// ===================================================================
+// CONTOURS DES LOCAUX SUR LE PLAN
+// ===================================================================
+// Un contour = les coins d'un local sur un plan, en proportion du plan (0 à 1). En mode « contours »,
+// l'application propose le premier local sans contour ; on touche chaque coin, puis à nouveau le
+// premier pour fermer, et elle passe au local suivant. Une pastille posée dans un contour reçoit le
+// niveau et le local correspondants. Les contours ne sont visibles qu'en mode « contours ».
+const SVG = "http://www.w3.org/2000/svg";
+const calqueContours = el("calqueContours");
+const barreContours = el("barreContours");
+const choixLocalContour = el("choixLocalContour");
+const boutonAnnulerPoint = el("annulerPoint");
+const boutonEffacerContour = el("effacerContour");
+
+let modeContours = false;
+let contoursPlan = [];     // contours du plan affiché
+let niveauxProjet = [];    // niveaux et locaux du projet, lus à l'ouverture du plan
+let locauxProjet = [];
+let coinsEnCours = [];     // coins du contour en train d'être dessiné
+let toucheContour = null;  // début d'une touche sur le plan, en mode contours
+
+el("modeContours").addEventListener("click", () => {
+  if (modeContours) quitterModeContours(); else entrerModeContours();
+});
+el("finContours").addEventListener("click", quitterModeContours);
+
+function entrerModeContours() {
+  if (locauxDuPlan().length === 0) {
+    alert(planCourant.niveauId
+      ? "Le niveau de ce plan n'a pas de locaux. Vérifie la liste des locaux du projet."
+      : "Ce projet n'a pas encore de locaux. Importe-les d'abord (écran Projet, bouton « locaux »).");
+    return;
+  }
+  modeContours = true;
+  coinsEnCours = [];
+  contenu.classList.add("modeContours");   // cache les pastilles pendant le dessin
+  barreContours.hidden = false;
+  recadrer();
+  remplirChoixLocal(prochainLocalSansContour(null));
+  dessinerContours();
+}
+
+function quitterModeContours() {
+  modeContours = false;
+  coinsEnCours = [];
+  toucheContour = null;
+  contenu.classList.remove("modeContours");
+  barreContours.hidden = true;
+  if (canevas.offsetWidth > 0) recadrer();   // pas pendant l'ouverture d'un plan (canevas pas encore dessiné)
+  dessinerContours();
+}
+
+// Locaux proposés : ceux du niveau du plan s'il en a un, sinon tous ceux du projet
+function locauxDuPlan() {
+  return planCourant.niveauId
+    ? locauxProjet.filter((l) => l.niveauId === planCourant.niveauId)
+    : locauxProjet;
+}
+
+function libelleLocal(local) {
+  return [local.numero, local.nom].filter(Boolean).join(" · ");
+}
+
+// Le premier local sans contour sur ce plan, en commençant après « apresId »
+function prochainLocalSansContour(apresId) {
+  const dessines = new Set(contoursPlan.map((c) => c.localId));
+  const locaux = locauxDuPlan();
+  const debut = locaux.findIndex((l) => l.id === apresId) + 1;
+  const suite = [...locaux.slice(debut), ...locaux.slice(0, debut)];
+  return suite.find((l) => !dessines.has(l.id))?.id || null;
+}
+
+// Liste des locaux ; ceux qui ont déjà un contour sont marqués « ✓ ».
+// Sans niveau sur le plan, les locaux sont regroupés par niveau.
+function remplirChoixLocal(localId) {
+  const dessines = new Set(contoursPlan.map((c) => c.localId));
+  choixLocalContour.replaceChildren(new Option("— local à dessiner —", ""));
+  for (const niveau of niveauxProjet) {
+    const locaux = locauxDuPlan().filter((l) => l.niveauId === niveau.id);
+    if (locaux.length === 0) continue;
+    let groupe = choixLocalContour;
+    if (!planCourant.niveauId) {
+      groupe = document.createElement("optgroup");
+      groupe.label = niveau.nom;
+      choixLocalContour.append(groupe);
+    }
+    for (const local of locaux) {
+      groupe.append(new Option((dessines.has(local.id) ? "✓ " : "") + libelleLocal(local), local.id));
+    }
+  }
+  choixLocalContour.value = localId || "";
+}
+
+// Changer de local abandonne le contour commencé
+choixLocalContour.addEventListener("change", () => {
+  coinsEnCours = [];
+  dessinerContours();
+});
+
+// Une touche brève (sans glisser, avec un seul doigt) pose un coin ; glisser déplace le plan
+contenu.addEventListener("pointerdown", (e) => {
+  if (!modeContours) return;
+  toucheContour = e.isPrimary && e.target === canevas ? { x: e.clientX, y: e.clientY } : null;
+});
+
+contenu.addEventListener("pointerup", (e) => {
+  if (!modeContours || !toucheContour || !e.isPrimary) return;
+  const glisse = Math.hypot(e.clientX - toucheContour.x, e.clientY - toucheContour.y) > TOLERANCE_MOUVEMENT;
+  toucheContour = null;
+  if (!glisse) ajouterCoin(e.clientX, e.clientY);
+});
+
+async function ajouterCoin(clientX, clientY) {
+  if (!choixLocalContour.value) {
+    alert("Choisis d'abord le local à dessiner, dans la liste en bas de l'écran.");
+    return;
+  }
+  const rect = canevas.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+  // Toucher à nouveau le premier coin ferme le contour
+  if (coinsEnCours.length >= 3) {
+    const [premierX, premierY] = coinsEnCours[0];
+    const ecart = Math.hypot(clientX - (rect.left + premierX * rect.width), clientY - (rect.top + premierY * rect.height));
+    if (ecart <= DISTANCE_FERMETURE) {
+      await enregistrerContour();
+      return;
+    }
+  }
+  coinsEnCours.push([arrondi(x), arrondi(y)]);
+  dessinerContours();
+}
+
+async function enregistrerContour() {
+  const localId = choixLocalContour.value;
+  const local = locauxProjet.find((l) => l.id === localId);
+  const existant = contoursPlan.find((c) => c.localId === localId);
+  if (existant && !confirm(`Le local ${libelleLocal(local)} a déjà un contour sur ce plan. Le remplacer ?`)) {
+    coinsEnCours = [];
+    dessinerContours();
+    return;
+  }
+
+  const contour = {
+    id: existant ? existant.id : crypto.randomUUID(),
+    projetId: projetCourant.id,
+    planId: planCourant.id,
+    localId,
+    points: coinsEnCours
+  };
+  await db.contours.put(contour);
+  contoursPlan = contoursPlan.filter((c) => c.localId !== localId).concat(contour);
+  coinsEnCours = [];
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  // On passe au local suivant qui n'a pas encore de contour
+  const suivant = prochainLocalSansContour(localId);
+  remplirChoixLocal(suivant);
+  dessinerContours();
+  if (!suivant) {
+    alert(planCourant.niveauId
+      ? "Tous les locaux de ce niveau ont un contour sur ce plan."
+      : "Tous les locaux du projet ont un contour sur ce plan.");
+  }
+}
+
+boutonAnnulerPoint.addEventListener("click", () => {
+  coinsEnCours.pop();
+  dessinerContours();
+});
+
+boutonEffacerContour.addEventListener("click", async () => {
+  const contour = contoursPlan.find((c) => c.localId === choixLocalContour.value);
+  const local = locauxProjet.find((l) => l.id === choixLocalContour.value);
+  if (!contour || !confirm(`Effacer le contour du local ${libelleLocal(local)} sur ce plan ?`)) return;
+  await db.contours.delete(contour.id);
+  contoursPlan = contoursPlan.filter((c) => c !== contour);
+  remplirChoixLocal(contour.localId);
+  dessinerContours();
+});
+
+// Dessine les contours (calque SVG en proportion du plan : 0 à 1), le n° de chaque local, et le
+// contour en cours avec ses coins. Rien n'est affiché en dehors du mode contours.
+function dessinerContours() {
+  calqueContours.replaceChildren();
+  contenu.querySelectorAll(".coinContour, .nomContour").forEach((e) => e.remove());
+  boutonAnnulerPoint.hidden = coinsEnCours.length === 0;
+  boutonEffacerContour.hidden = coinsEnCours.length > 0
+    || !contoursPlan.some((c) => c.localId === choixLocalContour.value);
+  if (!modeContours) return;
+
+  for (const contour of contoursPlan) {
+    const polygone = document.createElementNS(SVG, "polygon");
+    polygone.setAttribute("points", contour.points.map((p) => p.join(",")).join(" "));
+    polygone.classList.add("contour");
+    if (contour.localId === choixLocalContour.value && coinsEnCours.length === 0) {
+      polygone.classList.add("choisi");
+    }
+    calqueContours.append(polygone);
+
+    // N° du local au milieu de son contour (moyenne des coins)
+    const local = locauxProjet.find((l) => l.id === contour.localId);
+    const nom = document.createElement("span");
+    nom.className = "nomContour";
+    nom.textContent = local ? local.numero : "?";
+    nom.style.left = (moyenne(contour.points, 0) * 100) + "%";
+    nom.style.top = (moyenne(contour.points, 1) * 100) + "%";
+    contenu.append(nom);
+  }
+
+  if (coinsEnCours.length > 0) {
+    const trace = document.createElementNS(SVG, "polyline");
+    trace.setAttribute("points", coinsEnCours.map((p) => p.join(",")).join(" "));
+    trace.classList.add("contourEnCours");
+    calqueContours.append(trace);
+    coinsEnCours.forEach(([x, y], i) => {
+      const coin = document.createElement("span");
+      coin.className = i === 0 ? "coinContour premier" : "coinContour";   // le premier : là où l'on ferme
+      coin.style.left = (x * 100) + "%";
+      coin.style.top = (y * 100) + "%";
+      contenu.append(coin);
+    });
+  }
+}
+
+// Le contour qui contient le point (x, y) ; s'il y en a plusieurs (contours qui se chevauchent),
+// le plus petit, qui est le plus précis
+function contourSous(x, y) {
+  const contenant = contoursPlan.filter((c) => dansPolygone(x, y, c.points));
+  contenant.sort((a, b) => aire(a.points) - aire(b.points));
+  return contenant[0] || null;
+}
+
+// Le point est-il dans le polygone ? On compte combien de côtés une ligne horizontale partant du
+// point vers la droite traverse : un nombre impair veut dire « dedans ».
+function dansPolygone(x, y, points) {
+  let dedans = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) dedans = !dedans;
+  }
+  return dedans;
+}
+
+function aire(points) {
+  let somme = 0;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    somme += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+  }
+  return Math.abs(somme) / 2;
+}
+
+function moyenne(points, indice) {
+  return points.reduce((total, p) => total + p[indice], 0) / points.length;
+}
+
+// Garde 4 décimales : précision largement suffisante, données plus légères
+function arrondi(valeur) {
+  return Math.round(valeur * 10000) / 10000;
 }
 
 // ----- Fiche remarque -----
@@ -997,7 +1311,7 @@ async function ouvrirFiche(remarque, nouvelle) {
 function remplirLocaux(localId) {
   const niveauId = champNiveau.value;
   const locauxDuNiveau = listesFiche.locaux.filter((l) => l.niveauId === niveauId);
-  remplirListe(champLocal, locauxDuNiveau, (l) => [l.numero, l.nom].filter(Boolean).join(" · "), localId);
+  remplirListe(champLocal, locauxDuNiveau, libelleLocal, localId);
   champLocal.disabled = !niveauId;
 }
 
