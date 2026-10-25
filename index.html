@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=18">
-  <link rel="stylesheet" href="css/style.css?v=18">
+  <link rel="stylesheet" href="css/charte.css?v=19">
+  <link rel="stylesheet" href="css/style.css?v=19">
 </head>
 <body>
 
@@ -161,13 +161,18 @@
     </form>
   </dialog>
 
-  <!-- Niveau d'un plan (facultatif) -->
-  <dialog id="ficheNiveau">
+  <!-- Niveau et lot d'un plan (facultatifs), proposés d'office dans ses nouvelles remarques -->
+  <dialog id="fichePlan">
     <form method="dialog">
-      <h2 id="titreFicheNiveau">Plan</h2>
-      <label><span class="etiquette">niveau</span>
-        <select id="champNiveauPlan"></select>
-      </label>
+      <h2 id="titreFichePlan">Plan</h2>
+      <div class="grilleFiche">
+        <label><span class="etiquette">niveau</span>
+          <select id="champNiveauPlan"></select>
+        </label>
+        <label><span class="etiquette">lot</span>
+          <select id="champLotPlan"></select>
+        </label>
+      </div>
       <div class="boutonsFiche">
         <button value="enregistrer" class="principal">Enregistrer</button>
         <button value="annuler" formnovalidate>Annuler</button>
@@ -195,6 +200,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=18"></script>
+  <script type="module" src="js/app.js?v=19"></script>
 </body>
 </html>

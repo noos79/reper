@@ -55,7 +55,7 @@ Base IndexedDB `suiviChantier`, via Dexie :
 
 ```
 projets:   "id, nom"            // id, nom, creeLe, dernierNumero
-plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId (facultatif)
+plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId, lotId (facultatifs)
 remarques: "id, planId, projetId"
            // id, projetId, planId, numero, x, y, texte, statut, date,
            // niveauId, localId, lotId, ceId (facultatifs : null = non renseigné)
@@ -89,11 +89,12 @@ Décisions à respecter :
   le sous-traitant éventuel. Un nom vide retire l'entreprise et son adresse ; adresse vérifiée
   simplement (`ADRESSE_VALIDE`).
 - **Liens des remarques** (`niveauId`, `localId`, `lotId`, `ceId`) : le local sert seulement au tri et au
-  filtre ; il est indépendant de la numérotation. Un plan peut avoir un `niveauId`, proposé d'office pour
-  ses nouvelles remarques (changer le niveau du plan ne modifie pas les remarques existantes).
+  filtre ; il est indépendant de la numérotation. Un plan peut avoir un `niveauId` et un `lotId` (plan qui
+  ne concerne qu'un lot), proposés d'office pour ses nouvelles remarques, avec le CE si le lot n'en a
+  qu'un (les changer ne modifie pas les remarques existantes).
 - **Suppression d'un élément lié** : la remarque est gardée et **perd seulement le lien**, après un
   avertissement qui donne le nombre de remarques touchées, dans la même transaction. Lot supprimé → lot et
-  chapitre retirés ; CE supprimé → chapitre retiré (lot gardé) ; réimport des locaux → niveau ou local
+  chapitre retirés des remarques, lot retiré des plans ; CE supprimé → chapitre retiré (lot gardé) ; réimport des locaux → niveau ou local
   disparus retirés des remarques et des plans.
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
   **traits** sont gardés séparément (annotation modifiable) : `traits` = liste de traits, chaque trait =
@@ -121,8 +122,8 @@ Décisions à respecter :
 
 Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
 1. **Projets** : liste, création, suppression, export, import.
-2. **Projet** : liste des plans (niveau éventuel et nombre de remarques ouvertes), ajout d'un PDF,
-   « niveau » (petite fenêtre `ficheNiveau` avec une liste), suppression ;
+2. **Projet** : liste des plans (niveau et lot éventuels, nombre de remarques ouvertes), ajout d'un PDF,
+   « niveau et lot » (petite fenêtre `fichePlan`, deux listes), suppression ;
    boutons « locaux » et « lots ».
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
    - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
@@ -233,6 +234,7 @@ Fait :
      niveau, n° rempli automatiquement, sert seulement au tri et au filtre) ; lot → CE, affiché
      « chapitre » (liste réduite au lot). Le champ libre actuel « chapitre » (champ `entreprise` des
      données) disparaît **avec ses valeurs** (décision : pas de reprise, pas encore de vraies données).
+     Un plan peut aussi être lié à un lot (plan propre à un lot), proposé d'office dans ses remarques.
      Schéma 5, export version 5.
 
 À faire, dans cet ordre :

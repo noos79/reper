@@ -111,8 +111,9 @@ const vignettes = el("vignettes");
 const choixPhoto = el("choixPhoto");
 const appareilPhoto = el("appareilPhoto");
 
-const ficheNiveau = el("ficheNiveau");
+const fichePlan = el("fichePlan");
 const champNiveauPlan = el("champNiveauPlan");
+const champLotPlan = el("champLotPlan");
 
 const editeurPhoto = el("editeurPhoto");
 const cadrePhoto = el("cadrePhoto");
@@ -128,7 +129,7 @@ let photosFiche = [];         // photos de la remarque affichée (copie de trava
 let photosSupprimees = [];    // identifiants des photos à effacer à l'enregistrement
 let photoEnEdition = null;    // celle affichée dans l'écran d'annotation
 let listesFiche = { niveaux: [], locaux: [], lots: [], ce: [] };   // choix proposés dans la fiche
-let planEnCours = null;       // celui dont on choisit le niveau
+let planEnCours = null;       // celui dont on choisit le niveau et le lot
 const imagesDecodees = new Map();   // images déjà préparées pour l'affichage (évite de les relire)
 
 // ===== Navigation entre écrans =====
@@ -281,7 +282,7 @@ async function importerProjet(fichierZip) {
   const idsLocaux = new Set(locauxImportes.map((l) => l.id));
   const idsCe = new Set(ceImportes.map((c) => c.id));
   const lienCasse = (id, ids) => id && !ids.has(id);
-  if (plans.some((p) => lienCasse(p.niveauId, idsNiveaux))
+  if (plans.some((p) => lienCasse(p.niveauId, idsNiveaux) || lienCasse(p.lotId, idsLots))
       || remarquesImportees.some((r) => lienCasse(r.niveauId, idsNiveaux) || lienCasse(r.localId, idsLocaux)
         || lienCasse(r.lotId, idsLots) || lienCasse(r.ceId, idsCe))) {
     throw new Error("certains plans ou remarques renvoient à un niveau, un local, un lot ou un CE absent du fichier.");
@@ -380,6 +381,8 @@ async function ouvrirProjet(projet) {
   const plans = await db.plans.where("projetId").equals(projetCourant.id).sortBy("nom");
   const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).toArray();
   const nomNiveau = new Map(niveaux.map((n) => [n.id, n.nom]));
+  const lots = await db.lots.where("projetId").equals(projetCourant.id).toArray();
+  const nomLot = new Map(lots.map((l) => [l.id, libelleLot(l)]));
 
   listePlans.replaceChildren();
   if (plans.length === 0) {
@@ -390,14 +393,18 @@ async function ouvrirProjet(projet) {
       .where("planId").equals(plan.id)
       .filter((r) => r.statut === "ouverte")
       .count();
-    let detail = ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte");
-    if (nomNiveau.has(plan.niveauId)) detail = nomNiveau.get(plan.niveauId) + " · " + detail;
+    // Détail : niveau et lot du plan s'il en a, puis le nombre de remarques ouvertes
+    const detail = [
+      nomNiveau.get(plan.niveauId),
+      nomLot.get(plan.lotId),
+      ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte")
+    ].filter(Boolean).join(" · ");
 
     listePlans.append(elementListe(
       plan.nom,
       detail,
       () => ouvrirPlan(plan),
-      [["niveau", () => choisirNiveauPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
+      [["niveau et lot", () => reglerPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
     ));
   }
   afficherEcran("ecranProjet");
@@ -433,25 +440,31 @@ async function supprimerPlan(plan) {
   await ouvrirProjet(projetCourant);
 }
 
-// ----- Niveau d'un plan (facultatif) : proposé d'office pour les nouvelles remarques du plan -----
-async function choisirNiveauPlan(plan) {
+// ----- Niveau et lot d'un plan (facultatifs) : proposés d'office pour les nouvelles remarques du plan.
+// Utile pour un plan qui ne concerne qu'un lot (plan d'électricité, par exemple).
+async function reglerPlan(plan) {
   const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
-  if (niveaux.length === 0) {
-    alert("Ce projet n'a pas encore de niveaux. Importe d'abord les locaux (bouton « locaux »).");
+  const lots = await lotsDuProjet();
+  if (niveaux.length === 0 && lots.length === 0) {
+    alert("Ce projet n'a encore ni niveaux ni lots. Importe d'abord les locaux ou crée les lots.");
     return;
   }
   planEnCours = plan;
-  el("titreFicheNiveau").textContent = plan.nom;
+  el("titreFichePlan").textContent = plan.nom;
   remplirListe(champNiveauPlan, niveaux, (n) => n.nom, plan.niveauId);
-  ficheNiveau.returnValue = "";
-  ficheNiveau.showModal();
+  remplirListe(champLotPlan, lots, (l) => `${l.numero} · ${l.nom}`, plan.lotId);
+  fichePlan.returnValue = "";
+  fichePlan.showModal();
 }
 
-ficheNiveau.addEventListener("close", async () => {
+fichePlan.addEventListener("close", async () => {
   const plan = planEnCours;
   planEnCours = null;
-  if (ficheNiveau.returnValue !== "enregistrer") return;
-  await db.plans.update(plan.id, { niveauId: champNiveauPlan.value || null });
+  if (fichePlan.returnValue !== "enregistrer") return;
+  await db.plans.update(plan.id, {
+    niveauId: champNiveauPlan.value || null,
+    lotId: champLotPlan.value || null
+  });
   await ouvrirProjet(projetCourant);
 });
 
@@ -691,15 +704,19 @@ async function modifierLot(lot) {
 
 async function supprimerLot(lot) {
   const liees = await remarquesLiees((r) => r.lotId === lot.id);
+  const plansLies = await db.plans.where("projetId").equals(projetCourant.id)
+    .filter((p) => p.lotId === lot.id).toArray();
   let question = `Supprimer le ${libelleLot(lot)}, ses CE et leurs entreprises ?`;
   if (liees.length > 0) question += `\n\n${liees.length} remarque(s) perdront leur lot et leur chapitre.`;
+  if (plansLies.length > 0) question += `\n${plansLies.length} plan(s) perdront leur lot.`;
   if (!confirm(question)) return;
 
-  // Transaction : jamais de CE sans son lot, ni de remarque liée à un lot disparu
-  await db.transaction("rw", db.lots, db.ce, db.remarques, async () => {
+  // Transaction : jamais de CE sans son lot, ni de remarque ou de plan liés à un lot disparu
+  await db.transaction("rw", db.lots, db.ce, db.remarques, db.plans, async () => {
     await db.ce.where("lotId").equals(lot.id).delete();
     await db.lots.delete(lot.id);
     for (const r of liees) await db.remarques.update(r.id, { lotId: null, ceId: null });
+    for (const p of plansLies) await db.plans.update(p.id, { lotId: null });
   });
   await ouvrirLots();
 }
@@ -937,7 +954,7 @@ function poserRemarque(clientX, clientY) {
     statut: "ouverte",
     niveauId: planCourant.niveauId || null,   // le niveau du plan, s'il en a un
     localId: null,
-    lotId: null,
+    lotId: planCourant.lotId || null,         // le lot du plan, s'il en a un (et son CE s'il est seul)
     ceId: null,
     date: aujourdhui()
   }, true);
