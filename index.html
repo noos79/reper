@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=20">
-  <link rel="stylesheet" href="css/style.css?v=20">
+  <link rel="stylesheet" href="css/charte.css?v=21">
+  <link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body>
 
@@ -103,7 +103,7 @@
     </main>
     <!-- Mode « contours » : local à dessiner et commandes -->
     <div id="barreContours" class="barreContours" hidden>
-      <span class="aideContours">Touche chaque coin du local, puis à nouveau le premier pour fermer.</span>
+      <span id="aideContours" class="aideContours">Touche chaque coin du local, puis à nouveau le premier pour fermer.</span>
       <select id="choixLocalContour" aria-label="Local à dessiner"></select>
       <button type="button" id="annulerPoint" class="bouton secondaire">annuler le point</button>
       <button type="button" id="effacerContour" class="bouton secondaire">effacer le contour</button>
@@ -211,6 +211,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=20"></script>
+  <script type="module" src="js/app.js?v=21"></script>
 </body>
 </html>

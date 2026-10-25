@@ -1023,6 +1023,7 @@ const barreContours = el("barreContours");
 const choixLocalContour = el("choixLocalContour");
 const boutonAnnulerPoint = el("annulerPoint");
 const boutonEffacerContour = el("effacerContour");
+const aideContours = el("aideContours");
 
 let modeContours = false;
 let contoursPlan = [];     // contours du plan affiché
@@ -1198,18 +1199,18 @@ boutonEffacerContour.addEventListener("click", async () => {
 function dessinerContours() {
   calqueContours.replaceChildren();
   contenu.querySelectorAll(".coinContour, .nomContour").forEach((e) => e.remove());
+  const dejaDessine = contoursPlan.some((c) => c.localId === choixLocalContour.value);
   boutonAnnulerPoint.hidden = coinsEnCours.length === 0;
-  boutonEffacerContour.hidden = coinsEnCours.length > 0
-    || !contoursPlan.some((c) => c.localId === choixLocalContour.value);
+  boutonEffacerContour.hidden = coinsEnCours.length > 0 || !dejaDessine;
+  aideContours.textContent = dejaDessine && coinsEnCours.length === 0
+    ? "Fais glisser un coin pour le déplacer, ou touche les coins d'un nouveau contour pour le remplacer."
+    : "Touche chaque coin du local, puis à nouveau le premier pour fermer.";
   if (!modeContours) return;
 
   for (const contour of contoursPlan) {
     const polygone = document.createElementNS(SVG, "polygon");
-    polygone.setAttribute("points", contour.points.map((p) => p.join(",")).join(" "));
+    polygone.setAttribute("points", texteDesPoints(contour.points));
     polygone.classList.add("contour");
-    if (contour.localId === choixLocalContour.value && coinsEnCours.length === 0) {
-      polygone.classList.add("choisi");
-    }
     calqueContours.append(polygone);
 
     // N° du local au milieu de son contour (moyenne des coins)
@@ -1217,24 +1218,76 @@ function dessinerContours() {
     const nom = document.createElement("span");
     nom.className = "nomContour";
     nom.textContent = local ? local.numero : "?";
-    nom.style.left = (moyenne(contour.points, 0) * 100) + "%";
-    nom.style.top = (moyenne(contour.points, 1) * 100) + "%";
+    placer(nom, [moyenne(contour.points, 0), moyenne(contour.points, 1)]);
     contenu.append(nom);
+
+    // Contour du local choisi : mis en évidence, avec ses coins à faire glisser
+    if (contour.localId === choixLocalContour.value && coinsEnCours.length === 0) {
+      polygone.classList.add("choisi");
+      contour.points.forEach((point, indice) => {
+        const poignee = document.createElement("span");
+        poignee.className = "coinContour poignee panzoom-exclude";   // « panzoom-exclude » : ne déplace pas le plan
+        placer(poignee, point);
+        poignee.addEventListener("pointerdown", (e) => deplacerCoin(e, contour, indice, polygone, poignee, nom));
+        contenu.append(poignee);
+      });
+    }
   }
 
   if (coinsEnCours.length > 0) {
     const trace = document.createElementNS(SVG, "polyline");
-    trace.setAttribute("points", coinsEnCours.map((p) => p.join(",")).join(" "));
+    trace.setAttribute("points", texteDesPoints(coinsEnCours));
     trace.classList.add("contourEnCours");
     calqueContours.append(trace);
-    coinsEnCours.forEach(([x, y], i) => {
+    coinsEnCours.forEach((point, i) => {
       const coin = document.createElement("span");
       coin.className = i === 0 ? "coinContour premier" : "coinContour";   // le premier : là où l'on ferme
-      coin.style.left = (x * 100) + "%";
-      coin.style.top = (y * 100) + "%";
+      placer(coin, point);
       contenu.append(coin);
     });
   }
+}
+
+// Fait glisser un coin d'un contour existant ; le contour est enregistré quand on lâche.
+// Une touche brève sur un coin, sans glisser, commence un nouveau contour comme ailleurs sur le plan.
+function deplacerCoin(e, contour, indice, polygone, poignee, nom) {
+  if (!e.isPrimary) return;
+  e.stopPropagation();   // ni déplacement du plan, ni nouveau coin
+  poignee.setPointerCapture(e.pointerId);
+  const depart = { x: e.clientX, y: e.clientY };
+  let deplace = false;
+
+  const suivre = (ev) => {
+    if (!deplace && Math.hypot(ev.clientX - depart.x, ev.clientY - depart.y) <= TOLERANCE_MOUVEMENT) return;
+    const rect = canevas.getBoundingClientRect();
+    const borne = (v) => arrondi(Math.min(1, Math.max(0, v)));
+    contour.points[indice] = [borne((ev.clientX - rect.left) / rect.width), borne((ev.clientY - rect.top) / rect.height)];
+    deplace = true;
+    // Mise à jour directe (sans tout redessiner, ce qui ferait perdre la poignée sous le doigt)
+    polygone.setAttribute("points", texteDesPoints(contour.points));
+    placer(poignee, contour.points[indice]);
+    placer(nom, [moyenne(contour.points, 0), moyenne(contour.points, 1)]);
+  };
+  const lacher = async (ev) => {
+    poignee.removeEventListener("pointermove", suivre);
+    poignee.removeEventListener("pointerup", lacher);
+    poignee.removeEventListener("pointercancel", lacher);
+    if (deplace) await db.contours.put(contour);
+    else if (ev.type === "pointerup") await ajouterCoin(ev.clientX, ev.clientY);
+  };
+  poignee.addEventListener("pointermove", suivre);
+  poignee.addEventListener("pointerup", lacher);
+  poignee.addEventListener("pointercancel", lacher);
+}
+
+// Place un élément sur le plan à la position [x, y] (en proportion du plan)
+function placer(element, [x, y]) {
+  element.style.left = (x * 100) + "%";
+  element.style.top = (y * 100) + "%";
+}
+
+function texteDesPoints(points) {
+  return points.map((p) => p.join(",")).join(" ");
 }
 
 // Le contour qui contient le point (x, y) ; s'il y en a plusieurs (contours qui se chevauchent),

@@ -153,8 +153,10 @@ Décisions à respecter :
      « effacer le contour » (local déjà dessiné), « terminé ». L'application propose le premier local
      sans contour ; une touche brève pose un coin (glisser déplace le plan, l'appui long ne pose pas de
      remarque) ; toucher à nouveau le premier coin (à `DISTANCE_FERMETURE` près, 3 coins au moins) ferme
-     et enregistre le contour, puis passe au local suivant sans contour. Redessiner un local déjà dessiné
-     demande confirmation. Les pastilles sont cachées pendant le dessin ; les contours (calque SVG
+     et enregistre le contour, puis passe au local suivant sans contour. **Local déjà dessiné choisi** :
+     son contour est mis en évidence et ses coins deviennent des poignées à **faire glisser** (enregistré
+     au lâcher ; une touche brève sur un coin commence un nouveau contour) ; redessiner entièrement
+     demande confirmation. N° du local : disque turquoise, chiffres noirs. Les pastilles sont cachées pendant le dessin ; les contours (calque SVG
      `calqueContours`, n° du local au milieu) ne sont visibles **qu'en mode contours**.
 
 Fiche remarque : « description » (étiquette au-dessus du champ), puis une grille à deux colonnes
