@@ -9,6 +9,11 @@ Le propriétaire du projet (Niko) a des bases très légères en programmation. 
 d'obtenir rapidement une application qui fonctionne ; l'apprentissage se fait ailleurs. Mais chaque
 modification doit rester compréhensible et maintenable par lui.
 
+**Principe directeur : une application la plus simple possible, pour aller vite sur le chantier.**
+Poser une remarque ne doit pas obliger à parcourir une foule de choix avant de valider. Toute nouvelle
+fonction qui ajoute des champs, des listes ou des étapes à la saisie doit être pesée à cette aune, et
+signalée si elle alourdit la saisie.
+
 ## Règles de travail
 
 - **Langue** : tout en français — échanges, commentaires dans le code, noms de variables et de fonctions,
@@ -237,12 +242,13 @@ Fait :
      Un plan peut aussi être lié à un lot (plan propre à un lot), proposé d'office dans ses remarques.
      Schéma 5, export version 5.
 
+10. **Mise de côté** (décision du 25/10/2026) : bibliothèque de remarques types. Une version complète a
+    été réalisée puis écartée, car elle alourdissait la saisie (une liste de plus dans la fiche, et des
+    listes qui grossissent à chaque texte saisi) : contraire au principe directeur. Le propriétaire y
+    reviendra peut-être sous une autre forme. Le travail est conservé dans la branche locale
+    `etape-10-bibliotheque` (non envoyée sur GitHub).
+
 À faire, dans cet ordre :
-10. Bibliothèque de remarques types, **commune** à tous les projets et jamais modifiée par un projet.
-    Chaque projet en importe une copie modifiable, filtrée par lot / CE dans la fiche ; une
-    nouvelle remarque saisie s'ajoute à la liste du projet. Report des nouvelles remarques d'un projet
-    vers la bibliothèque : ajout seulement (les remarques de base sont conservées), doublons écartés,
-    confirmation pour les textes très proches. Export / import de la bibliothèque seule.
 11. Contours des locaux dessinés sur le plan (en proportion 0 à 1) ; à la pose d'une pastille, niveau,
     n° et nom du local remplis automatiquement.
 12. Mise à jour d'un plan sans perdre les remarques : l'ancienne version reçoit un **indice** (A, B…)
