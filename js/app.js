@@ -949,7 +949,7 @@ contenu.addEventListener("panzoomchange", (e) => {
 // devient floue. Peu après l'arrêt du geste, on redessine donc SEULEMENT la partie visible, à la
 // finesse exacte du zoom, dans un second canevas (`canevasNet`) posé par-dessus le plan, sous les
 // pastilles. Il bouge avec le plan ; un nouveau geste le laisse en place jusqu'au prochain arrêt.
-const DELAI_NETTETE = 300;   // millisecondes d'immobilité avant de redessiner
+const DELAI_NETTETE = 100;   // millisecondes d'immobilité avant de redessiner
 let pageCourante = null;     // page PDF affichée (pour la redessiner)
 let minuteurNettete = null;
 let renduNet = null;         // dessin en cours (annulé si un nouveau geste le rend inutile)

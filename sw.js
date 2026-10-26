@@ -5,7 +5,7 @@
 
 // Même numéro que « ?v=N » dans index.html : l'augmenter à chaque modification du CSS ou du JS.
 // Un nouveau numéro = un nouveau cache ; l'ancien est effacé.
-const VERSION = 25;
+const VERSION = 26;
 const NOM_CACHE = "suivi-chantier-" + VERSION;
 
 // Fichiers copiés dès l'installation, pour que tout marche hors ligne dès la visite suivante

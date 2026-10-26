@@ -201,7 +201,7 @@ des doigts zoome environ 2,6 fois).
 la souris, pas du centrage flex (le zoom dérivait loin du point visé).
 
 **Netteté au zoom** : le plan entier est dessiné une fois à l'ouverture (`canevasPlan`, finesse limitée :
-un plan entier net à 10 fois dépasserait la mémoire d'un téléphone). 0,3 s après l'arrêt d'un zoom ou
+un plan entier net à 10 fois dépasserait la mémoire d'un téléphone). 0,1 s après l'arrêt d'un zoom ou
 d'un déplacement (`panzoomchange`, `DELAI_NETTETE`), **seule la partie visible** est redessinée à la
 finesse exacte du zoom dans un second canevas (`canevasNet`, créé par `dessinerZoneNette`), posé par-dessus
 le plan, sous les contours et les pastilles, sans capter le toucher. Il n'existe que si le plan de base
