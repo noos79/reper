@@ -5,7 +5,7 @@
 
 // Même numéro que « ?v=N » dans index.html : l'augmenter à chaque modification du CSS ou du JS.
 // Un nouveau numéro = un nouveau cache ; l'ancien est effacé.
-const VERSION = 36;
+const VERSION = 38;
 const NOM_CACHE = "suivi-chantier-" + VERSION;
 
 // Fichiers copiés dès l'installation, pour que tout marche hors ligne dès la visite suivante
@@ -24,6 +24,8 @@ const FICHIERS = [
   "polices/dosis-600.ttf",
   "icones/icone-192.png",
   "icones/icone-512.png",
+  "icones/icone-512-adaptative.png",
+  "icones/reper-logo-B4.svg",
   // Bibliothèques (versions figées : leur contenu ne change jamais)
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs",
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs",

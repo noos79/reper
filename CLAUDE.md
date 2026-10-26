@@ -1,9 +1,15 @@
-# Suivi chantier — consignes pour Claude Code
+# RepeR (suivi de chantier) — consignes pour Claude Code
 
 ## Le projet
 
 Application web de suivi de chantier pour un usage personnel en bureau d'architecture (AASA, Belgique).
 Elle sert à pointer des remarques sur un plan PDF, à y joindre des photos annotées et à produire un rapport PDF.
+
+**Nom de l'application : RepeR** (décision du 26/10/2026) : nom et nom court du manifeste, titre de la
+page. Les **noms techniques restent « suivi-chantier »** et ne doivent pas changer : dépôt GitHub et
+adresse GitHub Pages (l'application installée et ses données y sont liées), base IndexedDB
+`suiviChantier` (les données des appareils), format d'export `suivi-chantier` (anciens fichiers .zip),
+préfixe des caches de `sw.js` (le nettoyage des anciens caches s'en sert).
 
 Le propriétaire du projet (Niko) a des bases très légères en programmation. L'objectif de ce dépôt est
 d'obtenir rapidement une application qui fonctionne ; l'apprentissage se fait ailleurs. Mais chaque
@@ -290,7 +296,12 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
 - **Traits de séparation** : 4 points, noirs (sous l'en-tête des écrans, sous le titre de la fiche).
 - **Fond derrière le plan** : quadrillage de petites croix grises à trait très fin (« + »), comme sur les documents AASA
   (variable `--motif-fond`). Le plan reste sur fond blanc par-dessus.
-- **Logo** : pas dans le dépôt (public). Pas de logo dans l'application pour l'instant.
+- **Logo AASA** : pas dans le dépôt (public).
+- **Logo de l'application RepeR** : `icones/reper-logo-B4.svg` (original, casque orange, crayon et
+  longue-vue sur fond gris clair `#EDEDED`), aussi icône d'onglet. Icônes tirées du SVG par Chrome :
+  `icone-192.png`, `icone-512.png` (logo tel quel, « any ») et `icone-512-adaptative.png` (« maskable » :
+  fond plein, logo réduit à 80 % au centre, pour la découpe ronde ou arrondie d'Android). Le logo
+  change → refaire les trois PNG.
 
 Palette AASA (couleurs de signalement, pas de décor) :
 - `#EE9227` orange → remarque **ouverte**
@@ -315,8 +326,8 @@ Fait :
    fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`).
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait),
    ajoutées à l'export (format d'export version 2).
-8. Application installable et hors ligne (manifeste web, service worker, icônes provisoires : pastille
-   orange « 1 »), bouton « installer », bandeau « nouvelle version disponible ». Vérifié sur Android.
+8. Application installable et hors ligne (manifeste web, service worker, icônes), bouton « installer »,
+   bandeau « nouvelle version disponible ». Vérifié sur Android.
 
 9. Structure du projet, en trois morceaux :
    - **9a (fait)** : niveaux et locaux (niveau, n°, nom), importés depuis un fichier **CSV** plutôt
