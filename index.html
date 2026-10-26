@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=21">
-  <link rel="stylesheet" href="css/style.css?v=21">
+  <link rel="stylesheet" href="css/charte.css?v=22">
+  <link rel="stylesheet" href="css/style.css?v=22">
 </head>
 <body>
 
@@ -109,6 +109,11 @@
       <button type="button" id="effacerContour" class="bouton secondaire">effacer le contour</button>
       <button type="button" id="finContours" class="bouton">terminé</button>
     </div>
+    <!-- Déplacement d'une pastille : on touche sa nouvelle place sur le plan -->
+    <div id="barreDeplacement" class="barreContours" hidden>
+      <span id="aideDeplacement" class="aideContours"></span>
+      <button type="button" id="annulerDeplacement" class="bouton">annuler</button>
+    </div>
   </section>
 
   <!-- Fiche remarque -->
@@ -167,6 +172,8 @@
       <div class="boutonsFiche">
         <button value="enregistrer" class="principal">Enregistrer</button>
         <button value="annuler" formnovalidate>Annuler</button>
+        <!-- Enregistre la fiche, puis on touche la nouvelle place de la pastille sur le plan -->
+        <button value="deplacer" id="boutonDeplacer" class="secondaire">déplacer</button>
         <button value="supprimer" id="boutonSupprimer" formnovalidate class="danger">Supprimer</button>
       </div>
     </form>
@@ -211,6 +218,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=21"></script>
+  <script type="module" src="js/app.js?v=22"></script>
 </body>
 </html>

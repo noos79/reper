@@ -121,6 +121,7 @@ const champLot = el("champLot");
 const champChapitre = el("champChapitre");
 const champDate = el("champDate");
 const boutonSupprimer = el("boutonSupprimer");
+const boutonDeplacer = el("boutonDeplacer");
 const vignettes = el("vignettes");
 const choixPhoto = el("choixPhoto");
 const appareilPhoto = el("appareilPhoto");
@@ -902,6 +903,7 @@ async function ouvrirPlan(plan) {
   el("titrePlan").textContent = plan.nom;
 
   quitterModeContours();
+  finirDeplacement();
   remarques = [];
   contoursPlan = [];
   dessinerPastilles();         // efface les pastilles du plan précédent
@@ -958,7 +960,8 @@ let pointDepart = null;
 
 contenu.addEventListener("pointerdown", (e) => {
   if (!e.isPrimary) { annulerAppui(); return; }
-  if (e.target !== canevas || modeContours) return;   // en mode contours, toucher dessine
+  // En mode contours, toucher dessine ; pendant un déplacement, toucher place la pastille
+  if (e.target !== canevas || modeContours || remarqueADeplacer) return;
   pointDepart = { x: e.clientX, y: e.clientY };
   minuteur = setTimeout(() => {
     minuteur = null;
@@ -1044,6 +1047,7 @@ function entrerModeContours() {
       : "Ce projet n'a pas encore de locaux. Importe-les d'abord (écran Projet, bouton « locaux »).");
     return;
   }
+  if (remarqueADeplacer) finirDeplacement();   // on ne déplace pas une pastille en dessinant
   modeContours = true;
   coinsEnCours = [];
   contenu.classList.add("modeContours");   // cache les pastilles pendant le dessin
@@ -1350,6 +1354,7 @@ async function ouvrirFiche(remarque, nouvelle) {
   remplirListe(champLot, listesFiche.lots, (l) => `${l.numero} · ${l.nom}`, remarque.lotId);
   remplirChapitres(remarque.ceId);
   boutonSupprimer.hidden = nouvelle;
+  boutonDeplacer.hidden = nouvelle;   // une nouvelle pastille vient d'être posée où on voulait
 
   // Copie de travail des photos : rien n'est écrit dans la base avant « enregistrer »
   photosFiche = nouvelle ? [] : await db.photos.where("remarqueId").equals(remarque.id).toArray();
@@ -1386,7 +1391,8 @@ fiche.addEventListener("close", async () => {
   const remarque = remarqueEnCours;
   remarqueEnCours = null;
 
-  if (action === "enregistrer") {
+  // « déplacer » enregistre d'abord la fiche, comme « enregistrer »
+  if (action === "enregistrer" || action === "deplacer") {
     remarque.texte = champTexte.value.trim();
     remarque.statut = champStatut.value;
     remarque.niveauId = champNiveau.value || null;   // choix « — » = non renseigné
@@ -1429,7 +1435,70 @@ fiche.addEventListener("close", async () => {
   photosSupprimees = [];
 
   dessinerPastilles();
+  if (action === "deplacer") commencerDeplacement(remarque);
 });
+
+// ----- Déplacement d'une pastille -----
+// Après « déplacer » dans la fiche, une touche brève sur le plan donne la nouvelle place de la
+// pastille ; glisser déplace toujours le plan, et l'appui long ne pose pas de remarque.
+const barreDeplacement = el("barreDeplacement");
+let remarqueADeplacer = null;
+let toucheDeplacement = null;   // début d'une touche sur le plan, pendant le déplacement
+
+function commencerDeplacement(remarque) {
+  remarqueADeplacer = remarque;
+  el("aideDeplacement").textContent =
+    `Touche la nouvelle place de la pastille n° ${remarque.numero} sur le plan.`;
+  contenu.classList.add("modeDeplacement");
+  barreDeplacement.hidden = false;
+  dessinerPastilles();
+}
+
+function finirDeplacement() {
+  remarqueADeplacer = null;
+  toucheDeplacement = null;
+  contenu.classList.remove("modeDeplacement");
+  barreDeplacement.hidden = true;
+  dessinerPastilles();
+}
+
+el("annulerDeplacement").addEventListener("click", finirDeplacement);
+
+contenu.addEventListener("pointerdown", (e) => {
+  if (!remarqueADeplacer) return;
+  toucheDeplacement = e.isPrimary && e.target === canevas ? { x: e.clientX, y: e.clientY } : null;
+});
+
+contenu.addEventListener("pointerup", (e) => {
+  if (!remarqueADeplacer || !toucheDeplacement || !e.isPrimary) return;
+  const glisse = Math.hypot(e.clientX - toucheDeplacement.x, e.clientY - toucheDeplacement.y) > TOLERANCE_MOUVEMENT;
+  toucheDeplacement = null;
+  if (!glisse) deplacerPastille(e.clientX, e.clientY);
+});
+
+async function deplacerPastille(clientX, clientY) {
+  const rect = canevas.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+  const remarque = remarqueADeplacer;
+  const changements = { x: arrondi(x), y: arrondi(y) };
+
+  // Nouvelle place dans le contour d'un autre local : on propose de changer le local de la remarque
+  const contour = contourSous(x, y);
+  const local = contour && locauxProjet.find((l) => l.id === contour.localId);
+  if (local && local.id !== remarque.localId &&
+      confirm(`La pastille est maintenant dans le local ${libelleLocal(local)}. Mettre à jour le local de la remarque ?`)) {
+    changements.niveauId = local.niveauId;
+    changements.localId = local.id;
+  }
+
+  await db.remarques.update(remarque.id, changements);
+  Object.assign(remarque, changements);   // même objet que dans la liste « remarques » du plan
+  if (navigator.vibrate) navigator.vibrate(30);
+  finirDeplacement();
+}
 
 // ===================================================================
 // PHOTOS DES REMARQUES
@@ -1636,6 +1705,7 @@ function dessinerPastilles() {
   for (const r of remarques) {
     const pastille = document.createElement("button");
     pastille.className = "pastille panzoom-exclude " + r.statut;
+    if (r === remarqueADeplacer) pastille.classList.add("enDeplacement");
     pastille.textContent = r.numero;
     pastille.style.left = (r.x * 100) + "%";
     pastille.style.top = (r.y * 100) + "%";

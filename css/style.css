@@ -196,6 +196,11 @@ header .bouton { white-space: nowrap; }
 
 .modeContours .pastille { display: none; }   /* pas de pastilles pendant le dessin */
 
+/* Déplacement d'une pastille : les pastilles ne réagissent plus au toucher (on touche le plan) ;
+   celle qu'on déplace reste visible, estompée, pour repérer son ancienne place */
+.modeDeplacement .pastille { pointer-events: none; }
+.modeDeplacement .pastille.enDeplacement { opacity: 0.4; }
+
 .barreContours {
   display: flex;
   flex-wrap: wrap;
@@ -336,6 +341,7 @@ header .bouton { white-space: nowrap; }
 .boutonsFiche {
   display: flex;
   flex-direction: row-reverse;
+  flex-wrap: wrap;   /* sur un téléphone étroit, les boutons passent sur deux lignes */
   gap: 8px;
   margin-top: 8px;
 }
@@ -343,6 +349,17 @@ header .bouton { white-space: nowrap; }
 .boutonsFiche button { padding: 10px 16px; }
 
 .boutonsFiche button[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
+
+/* « déplacer » : bouton secondaire (fond blanc, bordure et texte noirs) */
+.boutonsFiche .secondaire {
+  background: var(--bouton-texte);
+  color: var(--bouton-fond);
+}
+
+.boutonsFiche .secondaire:active {
+  background: var(--bouton-fond);
+  color: var(--bouton-texte);
+}
 
 /* « Supprimer » à l'écart, à gauche, en orange, texte noir en gras */
 .boutonsFiche .danger,

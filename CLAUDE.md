@@ -158,6 +158,12 @@ Décisions à respecter :
      au lâcher ; une touche brève sur un coin commence un nouveau contour) ; redessiner entièrement
      demande confirmation. N° du local : disque turquoise, chiffres noirs. Les pastilles sont cachées pendant le dessin ; les contours (calque SVG
      `calqueContours`, n° du local au milieu) ne sont visibles **qu'en mode contours**.
+   - **Déplacement d'une pastille** : bouton « déplacer » de la fiche (remarque existante seulement), qui
+     **enregistre d'abord la fiche** ; barre en bas (`barreDeplacement`) : « touche la nouvelle place… »,
+     « annuler ». Une touche brève pose la pastille (glisser déplace le plan, pas d'appui long) ; la
+     pastille déplacée reste visible, estompée, et les autres ne réagissent plus au toucher. Si la nouvelle
+     place est dans le contour d'un **autre local**, l'application demande s'il faut mettre à jour le
+     niveau et le local de la remarque.
 
 Fiche remarque : « description » (étiquette au-dessus du champ), puis une grille à deux colonnes
 (`grilleFiche`) : « statut », « niveau », « local », « lot », « chapitre » et « date » avec l'étiquette et
@@ -271,11 +277,19 @@ Fait :
 11. **(fait)** Contours des locaux dessinés sur le plan (en proportion 0 à 1) ; à la pose d'une pastille,
     niveau et local (n° et nom) remplis automatiquement. Schéma 6, export version 6.
 
+12. Mise à jour d'un plan sans perdre les remarques, en quatre morceaux (décisions du 26/10/2026) :
+    - **12a (fait)** : déplacement d'une pastille (bouton « déplacer » de la fiche, puis toucher la
+      nouvelle place ; pas de glisser-déposer, pour éviter les déplacements involontaires).
+
 À faire, dans cet ordre :
-12. Mise à jour d'un plan sans perdre les remarques : l'ancienne version reçoit un **indice** (A, B…)
-    et reste consultable, avec possibilité de la supprimer ; recalage par deux points (repères touchés
-    sur l'ancien puis le nouveau plan) ; déplacement d'une pastille au doigt ; contours redessinables ;
-    liste des remarques qui changent de local, à confirmer avant enregistrement.
+    - **12b** : remplacer le PDF d'un plan. L'ancienne version reçoit un **indice** (A, B…), reste
+      consultable **en lecture seule avec les pastilles à la place qu'elles avaient** (positions
+      mémorisées au remplacement), et peut être supprimée.
+    - **12c** : au remplacement, question à chaque fois : « même cadrage » (rien ne bouge) ou « recaler
+      par deux points » (deux repères touchés sur l'ancien puis sur le nouveau plan ; pastilles et
+      contours recalés).
+    - **12d** : contours redessinables (déjà possible) ; liste des remarques qui changent de local
+      après modification des contours, à confirmer avant enregistrement.
 13. Plan annoté en PDF : pastilles dessinées sur le PDF d'origine (bibliothèque pdf-lib, à valider),
     net à l'impression.
 14. Rapports PDF : rapport général (page de garde, une page par plan, liste des remarques avec
