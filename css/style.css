@@ -281,6 +281,8 @@ header .bouton { white-space: nowrap; }
   }
 }
 
+#titreFiche:focus { outline: none; }   /* pas de cadre autour du titre quand il reçoit le focus */
+
 :is(#fiche, #fichePlan) h2 {
   margin: 0 0 20px;
   padding-bottom: 12px;
@@ -448,7 +450,9 @@ header .bouton { white-space: nowrap; }
 }
 
 /* Flèche de retour dessinée (plus grasse et plus lisible que le caractère « ← ») */
-.fleche {
+/* Mêmes traits pour les icônes des boutons de la fiche (disquette, croix) */
+.fleche,
+.icone {
   width: 20px;
   height: 20px;
   fill: none;

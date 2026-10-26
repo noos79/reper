@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=22">
-  <link rel="stylesheet" href="css/style.css?v=22">
+  <link rel="stylesheet" href="css/charte.css?v=24">
+  <link rel="stylesheet" href="css/style.css?v=24">
 </head>
 <body>
 
@@ -112,14 +112,16 @@
     <!-- Déplacement d'une pastille : on touche sa nouvelle place sur le plan -->
     <div id="barreDeplacement" class="barreContours" hidden>
       <span id="aideDeplacement" class="aideContours"></span>
-      <button type="button" id="annulerDeplacement" class="bouton">annuler</button>
+      <button type="button" id="annulerDeplacement" class="bouton" aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </section>
 
   <!-- Fiche remarque -->
   <dialog id="fiche">
     <form method="dialog">
-      <h2 id="titreFiche">Remarque</h2>
+      <!-- tabindex="-1" : le titre peut recevoir le « focus » à l'ouverture, au lieu de la description,
+           pour que le clavier ne s'ouvre pas quand on consulte une remarque existante -->
+      <h2 id="titreFiche" tabindex="-1">Remarque</h2>
 
       <label><span class="etiquette">description</span>
         <textarea id="champTexte" rows="4" required></textarea>
@@ -170,8 +172,9 @@
       </div>
 
       <div class="boutonsFiche">
-        <button value="enregistrer" class="principal">Enregistrer</button>
-        <button value="annuler" formnovalidate>Annuler</button>
+        <!-- Icônes : disquette = enregistrer, croix = annuler (le nom reste lu par les lecteurs d'écran) -->
+        <button value="enregistrer" class="principal" aria-label="Enregistrer" title="Enregistrer"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13H4zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+        <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         <!-- Enregistre la fiche, puis on touche la nouvelle place de la pastille sur le plan -->
         <button value="deplacer" id="boutonDeplacer" class="secondaire">déplacer</button>
         <button value="supprimer" id="boutonSupprimer" formnovalidate class="danger">Supprimer</button>
@@ -192,8 +195,8 @@
         </label>
       </div>
       <div class="boutonsFiche">
-        <button value="enregistrer" class="principal">Enregistrer</button>
-        <button value="annuler" formnovalidate>Annuler</button>
+        <button value="enregistrer" class="principal" aria-label="Enregistrer" title="Enregistrer"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13H4zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+        <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
     </form>
   </dialog>
@@ -218,6 +221,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=22"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>

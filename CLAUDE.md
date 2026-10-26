@@ -144,7 +144,7 @@ Décisions à respecter :
      Saisies par les fenêtres de question du navigateur (`prompt`).
    - **Intervenants** (`ecranIntervenants`, retour vers Lots) : par lot, « entreprise du lot » puis chaque
      CE avec son sous-traitant ; « modifier » demande le nom puis l'adresse électronique.
-3. **Plan** : affichage du PDF (page 1), zoom, appui long (600 ms) pour poser une remarque, pastilles
+3. **Plan** : affichage du PDF (page 1), zoom (jusqu'à `ZOOM_MAX` = 10 fois ; molette : `PAS_MOLETTE`), appui long (600 ms) pour poser une remarque, pastilles
    cliquables ouvrant la fiche remarque (`<dialog>`). En-tête toujours sur une ligne : « contours »,
    « recadrer » (remet le plan en entier dans la zone visible, barre des contours comprise).
    - **Mode contours** (bouton « contours », qui sert aussi à en sortir, comme « terminé ») : barre en
@@ -171,7 +171,11 @@ le champ sur la même ligne ; « photos » (étiquette, vignettes en dessous). L
 la plus longue. Listes déroulantes avec un premier choix « — » (non renseigné) : « local » réduit aux
 locaux du niveau (affichés « n° · nom ») ; « chapitre » = **CE**, réduit aux CE du lot, choisi d'office
 si le lot n'en a qu'un. Changer de niveau ou de lot vide le choix qui en dépend. Les entreprises
-n'apparaissent pas dans la fiche. Zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
+n'apparaissent pas dans la fiche. Boutons du bas : **disquette** (enregistrer) et **croix** (annuler),
+icônes SVG (classe `icone`, `aria-label` pour le nom) ; « déplacer » ; « supprimer ». **Clavier** : à
+l'ouverture, le focus va à la description pour une **nouvelle** remarque (on commence par l'écrire), au
+titre (`tabindex="-1"`) pour une remarque **existante**, pour que le clavier reste caché tant qu'on ne
+touche pas la description (attribut `autofocus` réglé dans `ouvrirFiche`). Zone « photos » (vignettes + « prendre une photo » et « galerie »). Deux boutons car le
 sélecteur de photos des Android récents ne propose plus l'appareil photo : « prendre une photo » utilise
 `capture="environment"` pour l'ouvrir directement. Une
 vignette ouvre l'**écran d'annotation** (`<dialog id="editeurPhoto">`, plein écran) : trait rouge au
@@ -186,6 +190,16 @@ laisser le plan visible ; téléphones et portrait : fiche au centre. Elle reste
 réagit pas tant qu'elle est ouverte). Piste à étudier plus tard : fiche fixe à droite, non modale, dont
 le contenu change quand on touche une autre pastille ; il faudra alors décider du sort des modifications
 non enregistrées (enregistrement automatique, ou question avant de changer de remarque).
+
+**Zoom à deux doigts accéléré** : Panzoom calcule le pincement en *ajoutant* l'écart des doigts au zoom
+(trop lent à fort zoom). Avant chaque calcul de Panzoom, `app.js` règle son `step` pour obtenir un zoom
+proportionnel : zoom de départ × (écart / écart de départ) ^ `EXPOSANT_PINCEMENT` (1,8 : doubler l'écart
+des doigts zoome environ 3,5 fois). Limite : au-delà d'environ 6 fois, le plan devient flou (il est
+dessiné une seule fois, à finesse fixe) ; le redessiner plus finement au zoom serait une amélioration.
+
+**Boutons « enregistrer » et « annuler »** de toutes les fenêtres : icônes disquette et croix (la croix
+aussi pour annuler un déplacement de pastille). « Annuler le point » et « annuler le trait » (défaire un
+geste) restent en texte.
 
 Mobile : `interactive-widget=resizes-content` dans le viewport pour que le clavier ne masque pas la fiche,
 **complété par** `visualViewport` (fonction `ajusterFicheAuClavier`) qui centre la fiche dans la zone visible

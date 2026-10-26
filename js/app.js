@@ -880,8 +880,52 @@ async function modifierIntervenant(table, element, question) {
 // ===================================================================
 // ÉCRAN 3 : UN PLAN ET SES REMARQUES
 // ===================================================================
-const panzoom = Panzoom(contenu, { minScale: 0.5, maxScale: 6, step: 0.3 });
-cadre.addEventListener("wheel", panzoom.zoomWithWheel);
+// Zoom jusqu'à 10 fois
+const ZOOM_MAX = 10;
+const PAS_MOLETTE = 0.6;          // zoom de la molette (PC) : plus grand = plus rapide
+const EXPOSANT_PINCEMENT = 1.8;   // zoom à deux doigts : 1 = suit l'écart des doigts, plus = plus rapide
+
+const panzoom = Panzoom(contenu, { minScale: 0.5, maxScale: ZOOM_MAX, step: PAS_MOLETTE });
+cadre.addEventListener("wheel", (e) => panzoom.zoomWithWheel(e, { step: PAS_MOLETTE }));
+
+// ----- Zoom à deux doigts accéléré -----
+// Panzoom calcule le zoom à deux doigts en AJOUTANT l'écart des doigts (en pixels × step / 80) au zoom
+// de départ : à fort zoom, il faut s'y reprendre de nombreuses fois. On veut au contraire un zoom
+// proportionnel, accéléré : zoom de départ × (écart actuel / écart de départ) ^ EXPOSANT_PINCEMENT.
+// À chaque mouvement des doigts, juste avant que Panzoom fasse son calcul, on règle son « step » pour
+// que son résultat soit exactement le zoom voulu. Panzoom garde ainsi la main sur le déplacement.
+const doigts = new Map();   // doigts posés sur le plan : identifiant → position
+let pincement = null;       // zoom et écart des doigts au début du pincement
+
+function ecartDesDoigts() {
+  const [a, b] = [...doigts.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+contenu.addEventListener("pointerdown", (e) => {
+  doigts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  pincement = doigts.size === 2 ? { zoom: panzoom.getScale(), ecart: ecartDesDoigts() } : null;
+});
+
+// Écouté sur le plan : passe avant le calcul de Panzoom, qui écoute toute la page
+contenu.addEventListener("pointermove", (e) => {
+  if (!doigts.has(e.pointerId)) return;
+  doigts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!pincement || doigts.size !== 2) return;
+
+  const ecart = ecartDesDoigts();
+  const difference = ecart - pincement.ecart;
+  if (Math.abs(difference) < 1 || pincement.ecart < 1) return;
+  const zoomVoulu = pincement.zoom * Math.pow(ecart / pincement.ecart, EXPOSANT_PINCEMENT);
+  panzoom.setOptions({ step: (zoomVoulu - pincement.zoom) * 80 / difference });
+});
+
+for (const fin of ["pointerup", "pointercancel"]) {
+  contenu.addEventListener(fin, (e) => {
+    doigts.delete(e.pointerId);
+    pincement = null;
+  });
+}
 el("recadrer").addEventListener("click", recadrer);
 
 // Remet le plan en entier dans la zone visible. En mode contours, la barre du bas réduit cette zone :
@@ -1360,6 +1404,12 @@ async function ouvrirFiche(remarque, nouvelle) {
   photosFiche = nouvelle ? [] : await db.photos.where("remarqueId").equals(remarque.id).toArray();
   photosSupprimees = [];
   afficherVignettes();
+
+  // Clavier : à l'ouverture, la fenêtre donne le « focus » (la saisie) à l'élément marqué « autofocus ».
+  // Nouvelle remarque : la description, on commence par l'écrire. Remarque existante : le titre, pour
+  // que le clavier reste caché ; il s'ouvre quand on touche la description.
+  champTexte.autofocus = nouvelle;
+  titreFiche.autofocus = !nouvelle;
 
   fiche.returnValue = "";
   fiche.showModal();
