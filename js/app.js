@@ -2,6 +2,7 @@ import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build
 import Panzoom from "https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/+esm";
 import Dexie from "https://cdn.jsdelivr.net/npm/dexie@4.0.10/+esm";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
+import { PDFDocument, StandardFonts, rgb, degrees } from "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
@@ -97,6 +98,12 @@ const PHOTO_QUALITE = 0.85;         // qualité JPEG (0 à 1)
 const EPAISSEUR_TRAIT = 0.006;      // épaisseur des traits, en proportion du plus grand côté
 const COULEUR_TRAIT =
   getComputedStyle(document.documentElement).getPropertyValue("--trait-annotation").trim();
+
+// Plan annoté (PDF) : diamètre des pastilles, en points PDF (1 mm = 72 / 25,4 points).
+// Proportionnel au plan (un A0 imprimé en A3 garde des pastilles lisibles), mais jamais sous 5 mm.
+const POINTS_PAR_MM = 72 / 25.4;
+const PASTILLE_PDF_MIN = 5 * POINTS_PAR_MM;
+const PASTILLE_PDF_PROPORTION = 0.01;   // 1 % du plus grand côté du plan
 
 // Identifiant et version du format des fichiers d'export
 const FORMAT_EXPORT = "suivi-chantier";
@@ -474,7 +481,12 @@ async function ouvrirProjet(projet) {
       plan.nom,
       detail,
       () => ouvrirPlan(plan),
-      [["modifier", () => reglerPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
+      [
+        ["modifier", () => reglerPlan(plan)],
+        // Plan annoté en PDF ; un mot court pour laisser la place au nom du plan sur téléphone
+        [creerSigle("PDF"), () => exporterPlanAnnote(plan)],
+        ["Supprimer", () => supprimerPlan(plan)]
+      ]
     ));
 
     // Anciennes versions du plan, sous lui, de la plus récente à la plus ancienne
@@ -485,7 +497,10 @@ async function ouvrirProjet(projet) {
         "indice " + version.indice,
         "remplacé le " + formaterDate(version.remplaceLe),
         () => ouvrirPlan(plan, version),
-        [["Supprimer", () => supprimerVersion(plan, version)]]
+        [
+          [creerSigle("PDF"), () => exporterPlanAnnote(plan, version)],
+          ["Supprimer", () => supprimerVersion(plan, version)]
+        ]
       );
       ligne.classList.add("ancienneVersion");
       listePlans.append(ligne);
@@ -614,6 +629,96 @@ async function supprimerVersion(plan, version) {
     `Ce PDF ancien sera définitivement supprimé (le plan actuel et ses remarques ne changent pas).`)) return;
   await db.versionsPlan.delete(version.id);
   await ouvrirProjet(projetCourant);
+}
+
+// ----- Plan annoté en PDF -----
+// Les pastilles sont dessinées dans le PDF d'origine (bibliothèque pdf-lib) : le plan reste vectoriel,
+// donc net à l'impression. Seule la page du plan est gardée. Une ancienne version donne ses pastilles
+// telles qu'au remplacement.
+let exportPlanEnCours = false;   // évite de lancer deux fois le même travail par une double touche
+
+async function exporterPlanAnnote(plan, version = null) {
+  if (exportPlanEnCours) return;
+  exportPlanEnCours = true;
+  document.body.style.cursor = "wait";
+  try {
+    const source = version || plan;
+    const pastilles = version
+      ? version.pastilles
+      : await db.remarques.where("planId").equals(plan.id).toArray();
+    const octets = await source.fichier.arrayBuffer();
+
+    // pdf.js donne la place de chaque pastille en points PDF, rotation de la page comprise.
+    // On lui passe une copie des octets : il les transmet à son « worker » et l'original deviendrait vide.
+    const pdf = await pdfjsLib.getDocument({ data: octets.slice(0) }).promise;
+    const vue = (await pdf.getPage(source.page)).getViewport({ scale: 1 });
+
+    let doc;
+    try {
+      doc = await PDFDocument.load(octets);
+    } catch (erreur) {
+      if (/encrypted/i.test(erreur.message)) {
+        alert("Ce PDF est protégé (chiffré) : impossible d'y dessiner les pastilles.");
+        return;
+      }
+      throw erreur;
+    }
+
+    // On ne garde que la page du plan
+    for (let i = doc.getPageCount() - 1; i >= 0; i--) {
+      if (i !== source.page - 1) doc.removePage(i);
+    }
+    const page = doc.getPage(0);
+    const police = await doc.embedFont(StandardFonts.HelveticaBold);
+    const diametre = Math.max(PASTILLE_PDF_MIN, PASTILLE_PDF_PROPORTION * Math.max(vue.width, vue.height));
+    // Page tournée (plan en paysage, par exemple) : le numéro tourne avec elle pour rester droit
+    const angle = vue.rotation * Math.PI / 180;
+
+    for (const r of [...pastilles].sort((a, b) => a.numero - b.numero)) {
+      const [x, y] = vue.convertToPdfPoint(r.x * vue.width, r.y * vue.height);
+      page.drawCircle({
+        x, y,
+        size: diametre / 2,   // rayon
+        color: couleurPdf(r.statut === "levee" ? "--statut-levee" : "--statut-ouverte")
+      });
+
+      // Numéro centré dans le cercle, réduit s'il est trop long (au-delà de 80 % du diamètre)
+      const texte = String(r.numero);
+      let taille = diametre * 0.5;
+      taille = Math.min(taille, taille * diametre * 0.8 / police.widthOfTextAtSize(texte, taille));
+      const largeur = police.widthOfTextAtSize(texte, taille);
+      const hauteur = police.heightAtSize(taille, { descender: false });
+      // Point de départ du texte (en bas à gauche), décalé depuis le centre, tourné comme la page
+      const dx = -largeur / 2;
+      const dy = -hauteur / 2;
+      page.drawText(texte, {
+        x: x + dx * Math.cos(angle) - dy * Math.sin(angle),
+        y: y + dx * Math.sin(angle) + dy * Math.cos(angle),
+        size: taille,
+        font: police,
+        color: couleurPdf("--encre"),
+        rotate: degrees(vue.rotation)
+      });
+    }
+
+    const resultat = await doc.save();
+    const indice = version ? version.indice : plan.nombreVersions ? lettreIndice(plan.nombreVersions + 1) : null;
+    const nom = [projetCourant.nom, plan.nom, indice && "indice " + indice, "annoté " + aujourdhui()]
+      .filter(Boolean).join(" - ");
+    telecharger(new Blob([resultat], { type: "application/pdf" }), nomDeFichier(nom) + ".pdf");
+  } catch (erreur) {
+    alert("Impossible de produire le plan annoté : " + erreur.message);
+  } finally {
+    exportPlanEnCours = false;
+    document.body.style.cursor = "";
+  }
+}
+
+// Couleur de la charte (variable CSS « #RRVVBB ») au format de pdf-lib (trois valeurs de 0 à 1)
+function couleurPdf(variable) {
+  const hexa = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+  const [r, v, b] = [1, 3, 5].map((i) => parseInt(hexa.slice(i, i + 2), 16) / 255);
+  return rgb(r, v, b);
 }
 
 // ----- Niveau et lot d'un plan (facultatifs) : proposés d'office pour les nouvelles remarques du plan.
@@ -2292,11 +2397,11 @@ function remplirListe(liste, elements, libelle, valeur) {
   if (liste.selectedIndex === -1) liste.value = "";   // valeur disparue : « — »
 }
 
-// Action discrète d'une ligne de liste (texte gris seul)
+// Action discrète d'une ligne de liste (texte gris seul ; « texte » peut aussi être un sigle)
 function boutonAction(texte, quandToucher) {
   const bouton = document.createElement("button");
   bouton.className = "actionElement";
-  bouton.textContent = texte;
+  bouton.append(texte);
   bouton.addEventListener("click", quandToucher);
   return bouton;
 }

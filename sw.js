@@ -5,7 +5,7 @@
 
 // Même numéro que « ?v=N » dans index.html : l'augmenter à chaque modification du CSS ou du JS.
 // Un nouveau numéro = un nouveau cache ; l'ancien est effacé.
-const VERSION = 29;
+const VERSION = 30;
 const NOM_CACHE = "suivi-chantier-" + VERSION;
 
 // Fichiers copiés dès l'installation, pour que tout marche hors ligne dès la visite suivante
@@ -24,7 +24,8 @@ const FICHIERS = [
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs",
   "https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/+esm",
   "https://cdn.jsdelivr.net/npm/dexie@4.0.10/+esm",
-  "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
+  "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm",
+  "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js"
 ];
 
 // Au-delà de ce délai sans réponse du réseau, on ouvre la page gardée en cache

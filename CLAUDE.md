@@ -36,6 +36,7 @@ signalée si elle alourdit la saisie.
   - Panzoom `@panzoom/panzoom@4.5.1` (zoom et déplacement)
   - Dexie `dexie@4.0.10` (base IndexedDB)
   - JSZip `jszip@3.10.1` (export et import)
+  - pdf-lib `pdf-lib@1.17.1` (`dist/pdf-lib.esm.min.js` : plan annoté en PDF)
 - Hébergement : GitHub Pages (`https://<compte>.github.io/suivi-chantier/`).
 - Tests en local avec l'extension VS Code Live Server.
 - Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`,
@@ -163,9 +164,9 @@ Décisions à respecter :
 1. **Projets** : liste, création, suppression, export, import.
 2. **Projet** : liste des plans (indice actuel si le PDF a été remplacé, niveau et lot éventuels, nombre
    de remarques ouvertes), ajout d'un PDF, « modifier » (petite fenêtre `fichePlan` : niveau, lot,
-   « mettre à jour le PDF »), suppression ; sous chaque plan, ses **anciennes versions** en retrait
-   (« indice A · remplacé le … », de la plus récente à la plus ancienne), qu'on ouvre en les touchant, et
-   « supprimer » ; boutons « locaux » et « lots ».
+   « mettre à jour le PDF »), « PDF » (plan annoté), suppression ; sous chaque plan, ses **anciennes
+   versions** en retrait (« indice A · remplacé le … », de la plus récente à la plus ancienne), qu'on
+   ouvre en les touchant, « PDF » et « supprimer » ; boutons « locaux » et « lots ».
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
    - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
      dessous (renommer, supprimer), « + ajouter un CE » ; boutons « intervenants » et « nouveau lot ».
@@ -346,9 +347,17 @@ Fait :
     - **12d (fait)** : contours redessinables (déjà possible) ; liste des remarques qui changent de local
       après modification des contours, à confirmer avant enregistrement.
 
+13. **(fait)** Plan annoté en PDF (action « PDF » d'un plan ou d'une ancienne version, fonction
+    `exporterPlanAnnote`) : pastilles dessinées **dans le PDF d'origine** avec pdf-lib (validée le
+    26/10/2026), donc vectoriel et net à l'impression. Seule la page du plan est gardée. Toutes les
+    remarques, orange (ouverte) ou vert (levée), numéro noir en Helvetica gras (police standard du PDF,
+    rien à embarquer), réduit s'il est trop long. Diamètre : 1 % du plus grand côté du plan, au moins
+    5 mm (`PASTILLE_PDF_PROPORTION`, `PASTILLE_PDF_MIN`). La place en points PDF est donnée par pdf.js
+    (`convertToPdfPoint`), ce qui tient compte de la rotation de la page et d'un cadre décalé ; le numéro
+    tourne avec la page pour rester droit. Fichier « projet - plan - indice X - annoté AAAA-MM-JJ.pdf ».
+    Limite : un PDF **chiffré** (protégé) est refusé avec un message.
+
 À faire, dans cet ordre :
-13. Plan annoté en PDF : pastilles dessinées sur le PDF d'origine (bibliothèque pdf-lib, à valider),
-    net à l'impression.
 14. Rapports PDF : rapport général (page de garde, une page par plan, liste des remarques avec
     vignettes) et rapport par local (vue recadrée sur le contour, remarques du local) ; filtres
     (toutes, ouvertes seulement, un lot, un CE, un niveau, un local). La page de garde reprend la liste des
