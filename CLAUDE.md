@@ -193,9 +193,20 @@ non enregistrées (enregistrement automatique, ou question avant de changer de r
 
 **Zoom à deux doigts accéléré** : Panzoom calcule le pincement en *ajoutant* l'écart des doigts au zoom
 (trop lent à fort zoom). Avant chaque calcul de Panzoom, `app.js` règle son `step` pour obtenir un zoom
-proportionnel : zoom de départ × (écart / écart de départ) ^ `EXPOSANT_PINCEMENT` (1,8 : doubler l'écart
-des doigts zoome environ 3,5 fois). Limite : au-delà d'environ 6 fois, le plan devient flou (il est
-dessiné une seule fois, à finesse fixe) ; le redessiner plus finement au zoom serait une amélioration.
+proportionnel : zoom de départ × (écart / écart de départ) ^ `EXPOSANT_PINCEMENT` (1,4 : doubler l'écart
+des doigts zoome environ 2,6 fois).
+
+**Centrage du plan** : `#contenuPlan` est centré par `margin: auto`, **jamais** par `align-items` /
+`justify-content` sur `#cadrePlan` : Panzoom tient compte des marges pour zoomer autour des doigts ou de
+la souris, pas du centrage flex (le zoom dérivait loin du point visé).
+
+**Netteté au zoom** : le plan entier est dessiné une fois à l'ouverture (`canevasPlan`, finesse limitée :
+un plan entier net à 10 fois dépasserait la mémoire d'un téléphone). 0,3 s après l'arrêt d'un zoom ou
+d'un déplacement (`panzoomchange`, `DELAI_NETTETE`), **seule la partie visible** est redessinée à la
+finesse exacte du zoom dans un second canevas (`canevasNet`, créé par `dessinerZoneNette`), posé par-dessus
+le plan, sous les contours et les pastilles, sans capter le toucher. Il n'existe que si le plan de base
+n'est plus assez fin ; un dessin en cours est annulé par un nouveau geste ; la nouvelle zone remplace
+l'ancienne une fois prête (pas de clignotement).
 
 **Boutons « enregistrer » et « annuler »** de toutes les fenêtres : icônes disquette et croix (la croix
 aussi pour annuler un déplacement de pastille). « Annuler le point » et « annuler le trait » (défaire un

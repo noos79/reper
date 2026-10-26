@@ -95,13 +95,15 @@ header .bouton { white-space: nowrap; }
   overflow: hidden;
   touch-action: none;
   display: flex;
-  align-items: center;
-  justify-content: center;
   background-image: var(--motif-fond);   /* quadrillage de croix de la charte */
   background-size: var(--motif-fond-taille);
 }
 
+/* Plan centré par des marges automatiques, et non par « align-items / justify-content » : Panzoom
+   tient compte des marges pour zoomer autour des doigts ou de la souris, pas du centrage flex
+   (sinon le zoom dérive loin du point visé) */
 #contenuPlan {
+  margin: auto;
   position: relative;
   --echelle: 1;
 }
@@ -112,6 +114,13 @@ header .bouton { white-space: nowrap; }
   border: 1px solid var(--trait);
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Zone visible redessinée nette au zoom (voir « Netteté au zoom » dans app.js) : par-dessus le plan,
+   sous les contours et les pastilles ; ne capte pas le toucher (c'est le plan qui le reçoit) */
+#canevasNet {
+  position: absolute;
+  pointer-events: none;
 }
 
 /* ===== Contours des locaux (mode « contours ») ===== */

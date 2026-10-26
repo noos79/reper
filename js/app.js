@@ -883,7 +883,7 @@ async function modifierIntervenant(table, element, question) {
 // Zoom jusqu'à 10 fois
 const ZOOM_MAX = 10;
 const PAS_MOLETTE = 0.6;          // zoom de la molette (PC) : plus grand = plus rapide
-const EXPOSANT_PINCEMENT = 1.8;   // zoom à deux doigts : 1 = suit l'écart des doigts, plus = plus rapide
+const EXPOSANT_PINCEMENT = 1.4;   // zoom à deux doigts : 1 = suit l'écart des doigts, plus = plus rapide
 
 const panzoom = Panzoom(contenu, { minScale: 0.5, maxScale: ZOOM_MAX, step: PAS_MOLETTE });
 cadre.addEventListener("wheel", (e) => panzoom.zoomWithWheel(e, { step: PAS_MOLETTE }));
@@ -938,7 +938,96 @@ function recadrer() {
 
 contenu.addEventListener("panzoomchange", (e) => {
   contenu.style.setProperty("--echelle", e.detail.scale);
+  // Zoom ou déplacement : la zone visible sera redessinée nette quand le geste s'arrête
+  clearTimeout(minuteurNettete);
+  minuteurNettete = setTimeout(dessinerZoneNette, DELAI_NETTETE);
 });
+
+// ----- Netteté au zoom -----
+// Le plan est dessiné une fois à l'ouverture, avec une finesse limitée (un plan entier assez fin pour
+// un zoom de 10 fois dépasserait la mémoire d'un téléphone). Quand on zoome, l'image s'agrandit et
+// devient floue. Peu après l'arrêt du geste, on redessine donc SEULEMENT la partie visible, à la
+// finesse exacte du zoom, dans un second canevas (`canevasNet`) posé par-dessus le plan, sous les
+// pastilles. Il bouge avec le plan ; un nouveau geste le laisse en place jusqu'au prochain arrêt.
+const DELAI_NETTETE = 300;   // millisecondes d'immobilité avant de redessiner
+let pageCourante = null;     // page PDF affichée (pour la redessiner)
+let minuteurNettete = null;
+let renduNet = null;         // dessin en cours (annulé si un nouveau geste le rend inutile)
+
+function effacerZoneNette() {
+  clearTimeout(minuteurNettete);
+  if (renduNet) renduNet.cancel();
+  renduNet = null;
+  el("canevasNet")?.remove();
+}
+
+async function dessinerZoneNette() {
+  if (!pageCourante || canevas.offsetWidth === 0) return;
+  const finesse = window.devicePixelRatio || 1;
+  const bord = (canevas.offsetWidth - canevas.clientWidth) / 2;   // bordure fine autour du plan
+  const rectPlan = canevas.getBoundingClientRect();
+  const zoom = rectPlan.width / canevas.offsetWidth;
+
+  // Le plan de base est-il encore assez fin pour ce zoom ? Alors rien à redessiner.
+  if (canevas.width / canevas.clientWidth >= zoom * finesse * 0.95) {
+    effacerZoneNette();
+    return;
+  }
+
+  // Partie du plan visible à l'écran (en pixels d'écran, bordure exclue)
+  const plan = {
+    gauche: rectPlan.left + bord * zoom,
+    haut: rectPlan.top + bord * zoom,
+    largeur: canevas.clientWidth * zoom,
+    hauteur: canevas.clientHeight * zoom
+  };
+  const vue = cadre.getBoundingClientRect();
+  const x0 = Math.max(plan.gauche, vue.left);
+  const x1 = Math.min(plan.gauche + plan.largeur, vue.right);
+  const y0 = Math.max(plan.haut, vue.top);
+  const y1 = Math.min(plan.haut + plan.hauteur, vue.bottom);
+  if (x1 <= x0 || y1 <= y0) { effacerZoneNette(); return; }
+
+  // Pixels par pixel d'écran : la finesse de l'écran, réduite si l'image dépasserait PIXELS_MAX
+  let pixelsParPoint = finesse;
+  const pixels = (x1 - x0) * (y1 - y0) * finesse * finesse;
+  if (pixels > PIXELS_MAX) pixelsParPoint *= Math.sqrt(PIXELS_MAX / pixels);
+
+  const nouveau = document.createElement("canvas");
+  nouveau.id = "canevasNet";
+  nouveau.width = Math.ceil((x1 - x0) * pixelsParPoint);
+  nouveau.height = Math.ceil((y1 - y0) * pixelsParPoint);
+  // Position et taille dans le plan non zoomé : Panzoom applique ensuite le zoom, comme au plan
+  nouveau.style.left = (bord + (x0 - plan.gauche) / zoom) + "px";
+  nouveau.style.top = (bord + (y0 - plan.haut) / zoom) + "px";
+  nouveau.style.width = ((x1 - x0) / zoom) + "px";
+  nouveau.style.height = ((y1 - y0) / zoom) + "px";
+
+  // Dessin de la page entière à la bonne échelle, décalée pour que seule la zone visible tombe
+  // dans le canevas
+  const largeurPdf = pageCourante.getViewport({ scale: 1 }).width;
+  const echelle = (plan.largeur / largeurPdf) * pixelsParPoint;
+  const vuePdf = pageCourante.getViewport({
+    scale: echelle,
+    offsetX: -(x0 - plan.gauche) * pixelsParPoint,
+    offsetY: -(y0 - plan.haut) * pixelsParPoint
+  });
+
+  if (renduNet) renduNet.cancel();
+  const rendu = pageCourante.render({ canvasContext: nouveau.getContext("2d"), viewport: vuePdf });
+  renduNet = rendu;
+  try {
+    await rendu.promise;
+  } catch {
+    return;   // annulé par un nouveau geste ou un autre plan
+  }
+  if (renduNet !== rendu) return;
+  renduNet = null;
+
+  // Remplace l'ancienne zone nette seulement une fois la nouvelle prête : pas de clignotement
+  const ancien = el("canevasNet");
+  if (ancien) ancien.replaceWith(nouveau); else canevas.after(nouveau);
+}
 
 cadre.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -972,6 +1061,8 @@ async function ouvrirPlan(plan) {
 }
 
 async function afficherPage(page) {
+  effacerZoneNette();   // zone nette du plan précédent
+  pageCourante = page;
   const tailleOrigine = page.getViewport({ scale: 1 });
   const echelleEcran = Math.min(
     cadre.clientWidth / tailleOrigine.width,
