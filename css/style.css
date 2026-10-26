@@ -262,6 +262,7 @@ header .bouton { white-space: nowrap; }
 
 .pastille.ouverte { background: var(--statut-ouverte); }
 .pastille.levee   { background: var(--statut-levee); }
+.pastille.consultation { cursor: default; }   /* ancienne version : pastille sans fiche */
 
 /* ===== Fiche remarque et fenêtre « plan » (niveau et lot) ===== */
 /* « :is(#fiche, #fichePlan) » : la même règle vaut pour les deux fenêtres */
@@ -597,6 +598,14 @@ header h1 {
 }
 
 .nomIntervenant { font-weight: var(--graisse-titre); }
+
+/* Anciennes versions d'un plan (indices), en retrait sous leur plan */
+.liste li.ancienneVersion { padding-left: 24px; }
+.ancienneVersion .elementListe { padding: 10px 0; }
+.ancienneVersion .titreElement { font-size: 1rem; font-weight: var(--graisse-texte); }
+
+/* Fenêtre « modifier » d'un plan : bouton « mettre à jour le PDF » sous les listes */
+.actionsFichePlan { margin-bottom: 18px; }
 
 .liste li.listeVide {
   border: none;

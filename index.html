@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=26">
-  <link rel="stylesheet" href="css/style.css?v=26">
+  <link rel="stylesheet" href="css/charte.css?v=27">
+  <link rel="stylesheet" href="css/style.css?v=27">
 </head>
 <body>
 
@@ -194,6 +194,13 @@
           <select id="champLotPlan"></select>
         </label>
       </div>
+      <!-- Nouveau PDF du plan : l'actuel est gardé comme ancienne version (indice A, B…) -->
+      <div class="actions actionsFichePlan">
+        <label class="bouton secondaire">
+          mettre à jour le PDF
+          <input type="file" id="choixNouveauPdf" accept="application/pdf" hidden>
+        </label>
+      </div>
       <div class="boutonsFiche">
         <button value="enregistrer" class="principal" aria-label="Enregistrer" title="Enregistrer"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13H4zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
         <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -221,6 +228,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=26"></script>
+  <script type="module" src="js/app.js?v=27"></script>
 </body>
 </html>

@@ -60,7 +60,8 @@ Base IndexedDB `suiviChantier`, via Dexie :
 
 ```
 projets:   "id, nom"            // id, nom, creeLe, dernierNumero
-plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId, lotId (facultatifs)
+plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId, lotId (facultatifs),
+                                // nombreVersions (anciennes versions déjà créées, compteur des indices)
 remarques: "id, planId, projetId"
            // id, projetId, planId, numero, x, y, texte, statut, date,
            // niveauId, localId, lotId, ceId (facultatifs : null = non renseigné)
@@ -76,12 +77,21 @@ ce:        "id, projetId, lotId"                       (depuis la version 4 du s
            // id, projetId, lotId, nom, ordre, entreprise, courriel
 contours:  "id, projetId, planId, localId"            (depuis la version 6 du schéma)
            // id, projetId, planId, localId, points (liste de coins [x, y] en proportion du plan)
+versionsPlan: "id, projetId, planId"                   (depuis la version 7 du schéma)
+           // id, projetId, planId, rang (1, 2…), indice ("A", "B"…), fichier (Blob PDF), page,
+           // remplaceLe (AAAA-MM-JJ), pastilles (liste de { numero, statut, x, y } au remplacement)
 ```
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **6** (la version 5 a
+  une version existante : des appareils ont déjà des données. Version actuelle : **7** (la version 5 a
   retiré le champ `entreprise` des remarques).
+- **Anciennes versions d'un plan** (indices) : « mettre à jour le PDF » garde le PDF actuel dans
+  `versionsPlan`, avec l'indice suivant (`lettreIndice` : 1 → A… 26 → Z, 27 → AA) et une **copie des
+  pastilles** (numéro, statut, position) ; le nouveau PDF le remplace dans le plan, dont les remarques ne
+  bougent pas (12c ajoutera le recalage). Le plan actuel porte la lettre qui suit (`nombreVersions` + 1).
+  Les indices ne sont **jamais réutilisés**, même après suppression. Le nouveau PDF est vérifié (lisible
+  par pdf.js) avant toute question. Supprimer un plan supprime ses anciennes versions.
 - **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
   (ignorée), encodage UTF-8 (« CSV UTF-8 » d'Excel) ou Windows-1252 (« CSV séparateur point-virgule »),
   reconnu automatiquement. Lignes sans niveau ou sans n°, et doublons (même niveau et même n°), ignorés et
@@ -122,10 +132,11 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 6**, avec `niveaux`, `locaux`, `lots`,
-  `ce` et `contours` ; remarques avec leurs liens) +
-  `plans/<id>.pdf` + `photos/<id>.jpg`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
-  3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import), 5 (sans contours) et 6. Un lien rempli qui ne
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 7**, avec `niveaux`, `locaux`, `lots`,
+  `ce`, `contours` et `versions` ; remarques avec leurs liens) +
+  `plans/<id>.pdf` + `photos/<id>.jpg` + `versions/<id>.pdf`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
+  3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import), 5 (sans contours), 6 (sans
+  anciennes versions) et 7. Un lien rempli qui ne
   mène nulle part refuse l'import. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
   chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
@@ -135,9 +146,11 @@ Décisions à respecter :
 
 Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
 1. **Projets** : liste, création, suppression, export, import.
-2. **Projet** : liste des plans (niveau et lot éventuels, nombre de remarques ouvertes), ajout d'un PDF,
-   « niveau et lot » (petite fenêtre `fichePlan`, deux listes), suppression ;
-   boutons « locaux » et « lots ».
+2. **Projet** : liste des plans (indice actuel si le PDF a été remplacé, niveau et lot éventuels, nombre
+   de remarques ouvertes), ajout d'un PDF, « modifier » (petite fenêtre `fichePlan` : niveau, lot,
+   « mettre à jour le PDF »), suppression ; sous chaque plan, ses **anciennes versions** en retrait
+   (« indice A · remplacé le … », de la plus récente à la plus ancienne), qu'on ouvre en les touchant, et
+   « supprimer » ; boutons « locaux » et « lots ».
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
    - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
      dessous (renommer, supprimer), « + ajouter un CE » ; boutons « intervenants » et « nouveau lot ».
@@ -158,6 +171,9 @@ Décisions à respecter :
      au lâcher ; une touche brève sur un coin commence un nouveau contour) ; redessiner entièrement
      demande confirmation. N° du local : disque turquoise, chiffres noirs. Les pastilles sont cachées pendant le dessin ; les contours (calque SVG
      `calqueContours`, n° du local au milieu) ne sont visibles **qu'en mode contours**.
+   - **Ancienne version** (`versionConsultee`, ouverte depuis la liste des plans) : titre « nom · indice A »,
+     PDF de l'époque avec les pastilles copiées au remplacement ; **lecture seule** (pastilles sans fiche,
+     pas d'appui long, bouton « contours » caché).
    - **Déplacement d'une pastille** : bouton « déplacer » de la fiche (remarque existante seulement), qui
      **enregistre d'abord la fiche** ; barre en bas (`barreDeplacement`) : « touche la nouvelle place… »,
      « annuler ». Une touche brève pose la pastille (glisser déplace le plan, pas d'appui long) ; la
@@ -305,11 +321,11 @@ Fait :
 12. Mise à jour d'un plan sans perdre les remarques, en quatre morceaux (décisions du 26/10/2026) :
     - **12a (fait)** : déplacement d'une pastille (bouton « déplacer » de la fiche, puis toucher la
       nouvelle place ; pas de glisser-déposer, pour éviter les déplacements involontaires).
+    - **12b (fait)** : remplacer le PDF d'un plan. L'ancienne version reçoit un **indice** (A, B…), reste
+      consultable **en lecture seule avec les pastilles à la place qu'elles avaient** (positions
+      mémorisées au remplacement), et peut être supprimée. Schéma 7, export version 7.
 
 À faire, dans cet ordre :
-    - **12b** : remplacer le PDF d'un plan. L'ancienne version reçoit un **indice** (A, B…), reste
-      consultable **en lecture seule avec les pastilles à la place qu'elles avaient** (positions
-      mémorisées au remplacement), et peut être supprimée.
     - **12c** : au remplacement, question à chaque fois : « même cadrage » (rien ne bouge) ou « recaler
       par deux points » (deux repères touchés sur l'ancien puis sur le nouveau plan ; pastilles et
       contours recalés).

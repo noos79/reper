@@ -65,6 +65,19 @@ db.version(6).stores({
   ce: "id, projetId, lotId",
   contours: "id, projetId, planId, localId"
 });
+// Version 7 : anciennes versions des plans (indices A, B…), gardées quand on remplace le PDF
+db.version(7).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId",
+  lots: "id, projetId",
+  ce: "id, projetId, lotId",
+  contours: "id, projetId, planId, localId",
+  versionsPlan: "id, projetId, planId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -89,8 +102,8 @@ const COULEUR_TRAIT =
 const FORMAT_EXPORT = "suivi-chantier";
 // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE ;
 // 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise » ;
-// 6 : contours des locaux sur les plans
-const VERSION_EXPORT = 6;
+// 6 : contours des locaux sur les plans ; 7 : anciennes versions des plans (indices)
+const VERSION_EXPORT = 7;
 
 // Vérification simple d'une adresse électronique : « quelque chose@quelque chose.quelque chose »
 const ADRESSE_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,6 +142,7 @@ const appareilPhoto = el("appareilPhoto");
 const fichePlan = el("fichePlan");
 const champNiveauPlan = el("champNiveauPlan");
 const champLotPlan = el("champLotPlan");
+const choixNouveauPdf = el("choixNouveauPdf");
 
 const editeurPhoto = el("editeurPhoto");
 const cadrePhoto = el("cadrePhoto");
@@ -206,6 +220,7 @@ async function exporterProjet(projet) {
     const lotsProjet = await db.lots.where("projetId").equals(projet.id).toArray();
     const ceProjet = await db.ce.where("projetId").equals(projet.id).toArray();
     const contoursProjet = await db.contours.where("projetId").equals(projet.id).toArray();
+    const versionsProjet = await db.versionsPlan.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
@@ -222,11 +237,16 @@ async function exporterProjet(projet) {
       locaux: locauxProjet,
       lots: lotsProjet,
       ce: ceProjet,
-      contours: contoursProjet
+      contours: contoursProjet,
+      // Anciennes versions des plans, sans leur PDF : rangé à part dans le dossier versions/
+      versions: versionsProjet.map(({ fichier, ...reste }) => reste)
     }, null, 2));
 
     for (const plan of plans) {
       zip.file(`plans/${plan.id}.pdf`, plan.fichier);
+    }
+    for (const version of versionsProjet) {
+      zip.file(`versions/${version.id}.pdf`, version.fichier);
     }
     for (const photo of photosProjet) {
       zip.file(`photos/${photo.id}.jpg`, photo.image);
@@ -270,8 +290,9 @@ async function importerProjet(fichierZip) {
     throw new Error("ce fichier n'est pas un export de Suivi chantier.");
   }
   // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE),
-  // 5 (remarques liées aux niveaux, locaux, lots et CE), 6 (avec contours des locaux)
-  if (![1, 2, 3, 4, 5, 6].includes(donnees.version)) {
+  // 5 (remarques liées aux niveaux, locaux, lots et CE), 6 (avec contours des locaux),
+  // 7 (avec anciennes versions des plans)
+  if (![1, 2, 3, 4, 5, 6, 7].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
@@ -281,10 +302,12 @@ async function importerProjet(fichierZip) {
   const lotsImportes = donnees.lots || [];        // absents avant la version 4
   const ceImportes = donnees.ce || [];
   const contoursImportes = donnees.contours || [];   // absents avant la version 6
+  const versionsImportees = donnees.versions || [];  // absentes avant la version 7
   if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
       || !Array.isArray(photosImportees) || !Array.isArray(niveauxImportes)
       || !Array.isArray(locauxImportes) || !Array.isArray(lotsImportes)
-      || !Array.isArray(ceImportes) || !Array.isArray(contoursImportes)) {
+      || !Array.isArray(ceImportes) || !Array.isArray(contoursImportes)
+      || !Array.isArray(versionsImportees)) {
     throw new Error("le fichier projet.json est incomplet.");
   }
   const idsLots = new Set(lotsImportes.map((l) => l.id));
@@ -311,6 +334,9 @@ async function importerProjet(fichierZip) {
   if (contoursImportes.some((c) => !idsPlans.has(c.planId) || !idsLocaux.has(c.localId))) {
     throw new Error("certains contours renvoient à un plan ou un local absent du fichier.");
   }
+  if (versionsImportees.some((v) => !idsPlans.has(v.planId))) {
+    throw new Error("certaines anciennes versions renvoient à un plan absent du fichier.");
+  }
   const idsRemarques = new Set(remarquesImportees.map((r) => r.id));
   if (photosImportees.some((p) => !idsRemarques.has(p.remarqueId))) {
     throw new Error("certaines photos renvoient à une remarque absente du fichier.");
@@ -324,6 +350,17 @@ async function importerProjet(fichierZip) {
     const octets = await fichierPdf.async("blob");
     plansAImporter.push({
       ...plan,
+      projetId: projet.id,
+      fichier: new Blob([octets], { type: "application/pdf" })
+    });
+  }
+  const versionsAImporter = [];
+  for (const version of versionsImportees) {
+    const fichierPdf = zip.file(`versions/${version.id}.pdf`);
+    if (!fichierPdf) throw new Error("le PDF d'une ancienne version de plan est absent du fichier.");
+    const octets = await fichierPdf.async("blob");
+    versionsAImporter.push({
+      ...version,
       projetId: projet.id,
       fichier: new Blob([octets], { type: "application/pdf" })
     });
@@ -362,6 +399,7 @@ async function importerProjet(fichierZip) {
     await db.lots.bulkAdd(lotsImportes.map((l) => ({ ...l, projetId: projet.id })));
     await db.ce.bulkAdd(ceImportes.map((c) => ({ ...c, projetId: projet.id })));
     await db.contours.bulkAdd(contoursImportes.map((c) => ({ ...c, projetId: projet.id })));
+    await db.versionsPlan.bulkAdd(versionsAImporter);
   });
 
   alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
@@ -383,7 +421,7 @@ async function supprimerProjet(projet) {
 // Toutes les tables qui contiennent des données d'un projet (pour les transactions)
 function tablesDuProjet() {
   return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux, db.lots, db.ce,
-    db.contours];
+    db.contours, db.versionsPlan];
 }
 
 // Efface le contenu d'un projet (pas le projet lui-même). À appeler dans une transaction.
@@ -396,6 +434,7 @@ async function viderProjet(projetId) {
   await db.ce.where("projetId").equals(projetId).delete();
   await db.lots.where("projetId").equals(projetId).delete();
   await db.contours.where("projetId").equals(projetId).delete();
+  await db.versionsPlan.where("projetId").equals(projetId).delete();
 }
 
 // ===================================================================
@@ -420,8 +459,11 @@ async function ouvrirProjet(projet) {
       .where("planId").equals(plan.id)
       .filter((r) => r.statut === "ouverte")
       .count();
-    // Détail : niveau et lot du plan s'il en a, puis le nombre de remarques ouvertes
+    // Détail : indice actuel (si le PDF a déjà été remplacé), niveau et lot du plan s'il en a,
+    // puis le nombre de remarques ouvertes
     const detail = [
+      // (les anciennes versions ont pris A, B… : le plan actuel a la lettre suivante)
+      plan.nombreVersions ? "indice " + lettreIndice(plan.nombreVersions + 1) : null,
       nomNiveau.get(plan.niveauId),
       nomLot.get(plan.lotId),
       ouvertes + (ouvertes > 1 ? " remarques ouvertes" : " remarque ouverte")
@@ -431,8 +473,22 @@ async function ouvrirProjet(projet) {
       plan.nom,
       detail,
       () => ouvrirPlan(plan),
-      [["niveau et lot", () => reglerPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
+      [["modifier", () => reglerPlan(plan)], ["Supprimer", () => supprimerPlan(plan)]]
     ));
+
+    // Anciennes versions du plan, sous lui, de la plus récente à la plus ancienne
+    const versions = await db.versionsPlan.where("planId").equals(plan.id).toArray();
+    versions.sort((a, b) => b.rang - a.rang);
+    for (const version of versions) {
+      const ligne = elementListe(
+        "indice " + version.indice,
+        "remplacé le " + formaterDate(version.remplaceLe),
+        () => ouvrirPlan(plan, version),
+        [["Supprimer", () => supprimerVersion(plan, version)]]
+      );
+      ligne.classList.add("ancienneVersion");
+      listePlans.append(ligne);
+    }
   }
   afficherEcran("ecranProjet");
 }
@@ -459,24 +515,91 @@ choixPdf.addEventListener("change", async () => {
 async function supprimerPlan(plan) {
   if (!confirm(`Supprimer le plan « ${plan.nom} », ses remarques et leurs photos ?`)) return;
 
-  await db.transaction("rw", db.plans, db.remarques, db.photos, db.contours, async () => {
+  await db.transaction("rw", db.plans, db.remarques, db.photos, db.contours, db.versionsPlan, async () => {
     await db.photos.where("planId").equals(plan.id).delete();
     await db.remarques.where("planId").equals(plan.id).delete();
     await db.contours.where("planId").equals(plan.id).delete();
+    await db.versionsPlan.where("planId").equals(plan.id).delete();
     await db.plans.delete(plan.id);
   });
+  await ouvrirProjet(projetCourant);
+}
+
+// ----- Mise à jour du PDF d'un plan -----
+// Le PDF actuel devient une ancienne version, avec un indice (A, B…) et la position des pastilles à
+// ce moment-là ; le nouveau PDF le remplace. Les remarques restent attachées au plan, à la même place.
+// Les indices ne sont jamais réutilisés, même après suppression (compteur « nombreVersions » du plan).
+
+// Indice d'une version : 1 → A, 2 → B… 26 → Z, 27 → AA
+function lettreIndice(rang) {
+  let texte = "";
+  for (let n = rang; n > 0; n = Math.floor((n - 1) / 26)) {
+    texte = String.fromCharCode(65 + (n - 1) % 26) + texte;
+  }
+  return texte;
+}
+
+choixNouveauPdf.addEventListener("change", async () => {
+  const fichier = choixNouveauPdf.files[0];
+  choixNouveauPdf.value = "";
+  const plan = planEnCours;
+  if (!fichier || !plan) return;
+  fichePlan.close("enregistrer");   // enregistre aussi le niveau et le lot choisis dans la fenêtre
+  await remplacerPdf(plan, fichier);
+});
+
+async function remplacerPdf(plan, fichier) {
+  const actuel = await db.plans.get(plan.id);   // version à jour depuis la base
+  const rang = (actuel.nombreVersions || 0) + 1;
+  const indice = lettreIndice(rang);
+
+  // Le nouveau PDF doit être lisible (vérifié avant de demander quoi que ce soit)
+  try {
+    await pdfjsLib.getDocument({ data: new Uint8Array(await fichier.arrayBuffer()) }).promise;
+  } catch {
+    alert("Ce fichier n'est pas un PDF lisible. Le plan n'a pas été modifié.");
+    return;
+  }
+
+  if (!confirm(
+    `Remplacer le PDF du plan « ${actuel.nom} » par « ${fichier.name} » ?\n\n` +
+    `Le PDF actuel sera gardé comme indice ${indice}, consultable avec ses pastilles. ` +
+    `Les remarques restent à la même place sur le nouveau plan.`
+  )) return;
+
+  await db.transaction("rw", db.plans, db.remarques, db.versionsPlan, async () => {
+    const remarquesDuPlan = await db.remarques.where("planId").equals(plan.id).toArray();
+    await db.versionsPlan.add({
+      id: crypto.randomUUID(),
+      projetId: actuel.projetId,
+      planId: actuel.id,
+      rang,
+      indice,
+      fichier: actuel.fichier,
+      page: actuel.page,
+      remplaceLe: aujourdhui(),
+      // Pastilles telles qu'elles étaient sur ce PDF (lecture seule)
+      pastilles: remarquesDuPlan.map((r) => ({ numero: r.numero, statut: r.statut, x: r.x, y: r.y }))
+    });
+    await db.plans.update(actuel.id, { fichier, page: 1, nombreVersions: rang });
+  });
+  await ouvrirProjet(projetCourant);
+}
+
+async function supprimerVersion(plan, version) {
+  if (!confirm(`Supprimer l'indice ${version.indice} du plan « ${plan.nom} » ? ` +
+    `Ce PDF ancien sera définitivement supprimé (le plan actuel et ses remarques ne changent pas).`)) return;
+  await db.versionsPlan.delete(version.id);
   await ouvrirProjet(projetCourant);
 }
 
 // ----- Niveau et lot d'un plan (facultatifs) : proposés d'office pour les nouvelles remarques du plan.
 // Utile pour un plan qui ne concerne qu'un lot (plan d'électricité, par exemple).
 async function reglerPlan(plan) {
+  // Sans niveaux ni lots, les deux listes ne proposent que « — » ; la fenêtre sert alors à
+  // mettre à jour le PDF
   const niveaux = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
   const lots = await lotsDuProjet();
-  if (niveaux.length === 0 && lots.length === 0) {
-    alert("Ce projet n'a encore ni niveaux ni lots. Importe d'abord les locaux ou crée les lots.");
-    return;
-  }
   planEnCours = plan;
   el("titreFichePlan").textContent = plan.nom;
   remplirListe(champNiveauPlan, niveaux, (n) => n.nom, plan.niveauId);
@@ -1031,9 +1154,15 @@ async function dessinerZoneNette() {
 
 cadre.addEventListener("contextmenu", (e) => e.preventDefault());
 
-async function ouvrirPlan(plan) {
+// « version » : une ancienne version du plan (indice A, B…), affichée en lecture seule avec les
+// pastilles telles qu'elles étaient ; sans elle, le plan actuel
+let versionConsultee = null;
+
+async function ouvrirPlan(plan, version = null) {
   planCourant = plan;
-  el("titrePlan").textContent = plan.nom;
+  versionConsultee = version;
+  el("titrePlan").textContent = version ? `${plan.nom} · indice ${version.indice}` : plan.nom;
+  el("modeContours").hidden = Boolean(version);   // pas de contours sur une ancienne version
 
   quitterModeContours();
   finirDeplacement();
@@ -1045,13 +1174,19 @@ async function ouvrirPlan(plan) {
   afficherEcran("ecranPlan");
 
   try {
-    const donnees = await plan.fichier.arrayBuffer();
+    const source = version || plan;
+    const donnees = await source.fichier.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: donnees }).promise;
-    const page = await pdf.getPage(plan.page);
+    const page = await pdf.getPage(source.page);
     await afficherPage(page);
 
-    remarques = await db.remarques.where("planId").equals(plan.id).toArray();
-    contoursPlan = await db.contours.where("planId").equals(plan.id).toArray();
+    if (version) {
+      remarques = version.pastilles.map((p) => ({ ...p }));   // copies : rien n'est modifiable
+      contoursPlan = [];
+    } else {
+      remarques = await db.remarques.where("planId").equals(plan.id).toArray();
+      contoursPlan = await db.contours.where("planId").equals(plan.id).toArray();
+    }
     niveauxProjet = await db.niveaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
     locauxProjet = await db.locaux.where("projetId").equals(projetCourant.id).sortBy("ordre");
     dessinerPastilles();
@@ -1096,7 +1231,8 @@ let pointDepart = null;
 contenu.addEventListener("pointerdown", (e) => {
   if (!e.isPrimary) { annulerAppui(); return; }
   // En mode contours, toucher dessine ; pendant un déplacement, toucher place la pastille
-  if (e.target !== canevas || modeContours || remarqueADeplacer) return;
+  // Ancienne version : lecture seule, pas de nouvelle remarque
+  if (e.target !== canevas || modeContours || remarqueADeplacer || versionConsultee) return;
   pointDepart = { x: e.clientX, y: e.clientY };
   minuteur = setTimeout(() => {
     minuteur = null;
@@ -1850,7 +1986,9 @@ function dessinerPastilles() {
     pastille.textContent = r.numero;
     pastille.style.left = (r.x * 100) + "%";
     pastille.style.top = (r.y * 100) + "%";
-    pastille.addEventListener("click", () => ouvrirFiche(r, false));
+    // Ancienne version : pastilles affichées seulement, sans fiche
+    if (versionConsultee) pastille.classList.add("consultation");
+    else pastille.addEventListener("click", () => ouvrirFiche(r, false));
     contenu.appendChild(pastille);
   }
 }
