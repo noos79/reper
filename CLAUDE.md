@@ -169,7 +169,8 @@ Décisions à respecter :
    « mettre à jour le PDF »), « PDF » (plan annoté), suppression ; sous chaque plan, ses **anciennes
    versions** en retrait (« indice A · remplacé le … », de la plus récente à la plus ancienne), qu'on
    ouvre en les touchant, « PDF » et « supprimer » ; boutons « rapport », « locaux » et « lots ».
-   - **Rapport** : fenêtre `ficheRapport` : « remarques » (toutes / ouvertes seulement), niveau, local
+   - **Rapport** : fenêtre `ficheRapport` : « type » (général / par local), « remarques » (toutes /
+     ouvertes seulement), niveau, local
      (réduit au niveau), lot, chapitre (réduit au lot, **sans** choix d'office : un lot seul = tout le
      lot), « photos » (dans la liste / à la fin du rapport / sans photos) ; « — » = pas de filtre. Les
      choix restent ceux du rapport précédent. « produire le PDF » ; bandeau `bandeauTravail` pendant la
@@ -388,7 +389,26 @@ Fait :
       « Photos », par remarque (pastille, n°, local) puis ses photos, deux par ligne. Pied de page :
       projet, date du rapport, « page X / N ». Fichier « projet - rapport AAAA-MM-JJ.pdf ». Le plan annoté
       seul (étape 13) garde Helvetica.
-    - **14b** : rapport par local (vue recadrée sur le contour, remarques du local).
+    - **14b (fait)** : rapport **par local** (même fenêtre, « type » = par local ; mêmes filtres et
+      mêmes choix de photos ; fichier « projet - rapport par local AAAA-MM-JJ.pdf »). Après la page de
+      garde, les locaux qui ont des remarques choisies, par niveau puis dans l'ordre de la liste
+      (`sectionLocal`) : titre « niveau · n° · nom » avec le grand trait, puis pour chaque plan où le
+      local a des remarques, le nom du plan et une **vue recadrée** (`zoneAutour`) sur son contour et ses
+      pastilles (seulement sur les pastilles s'il n'a pas de contour sur ce plan), toujours vectorielle
+      (`dessinerVuePlan`, `embedPage` limité à la zone). Le **contour n'est pas dessiné** (il sert
+      seulement à cadrer) ; seules les pastilles du local. Air de 2 % et vue d'au moins 6 % du plus grand
+      côté du plan (`AIR_VUE_LOCAL`, `TAILLE_VUE_LOCAL_MIN`). **Échelle commune à tous les locaux d'un
+      même plan** (décision du 26/10/2026 : un WC doit paraître petit à côté d'une cuisine) :
+      `echelleDesLocaux` = celle où le plus grand contour du plan (tous les contours, pas seulement ceux
+      du rapport) tient dans la largeur de la page et `HAUTEUR_VUE_LOCAL` (110 mm), et jamais plus
+      agrandi que 30 % du plan sur toute la largeur (`VUE_LOCAL_REFERENCE`). Puis la liste de ses
+      remarques (chapitre seulement, le local étant dans le titre). **Chaque local commence sur une
+      nouvelle page** : jamais deux locaux sur la même page ; un local ne déborde sur la suivante que si
+      ses remarques l'imposent. Les remarques **sans local** viennent à la fin, plan par plan, comme dans
+      le rapport général.
+    - **Listes des remarques** (les deux rapports) : à la marge, rond de la couleur du statut puis le n°
+      en Roboto Condensed 600 à la taille du chapitre (`ecrireNumero`) ; les pastilles numérotées restent
+      sur les plans.
 15. Note d'envoi du rapport aux entreprises concernées (celles dont l'adresse électronique est définie) :
     par défaut l'entreprise du lot seule, avec la possibilité d'ajouter les sous-traitants des CE.
     Limite : une page web ne peut pas envoyer un courriel elle-même ; piste à étudier : partage du PDF

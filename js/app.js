@@ -2393,6 +2393,15 @@ const HAUTEUR_VIGNETTE_RAPPORT = 30 * POINTS_PAR_MM;   // photos dans la liste
 const HAUTEUR_PHOTO_FIN_MAX = 95 * POINTS_PAR_MM;      // photos à la fin du rapport (deux par ligne)
 const ECART = 4;                                 // entre deux photos
 const HAUTEUR_ETIQUETTE = 16;                    // étiquettes en pastille noire (comme dans la fiche)
+const PLAN_ENTIER = { x0: 0, y0: 0, x1: 1, y1: 1 };   // zone d'un plan, en proportion
+// Rapport par local : vue recadrée sur le contour (ou sur les pastilles s'il n'y en a pas)
+const HAUTEUR_VUE_LOCAL = 110 * POINTS_PAR_MM;   // au plus
+// Air autour du local et taille minimale de la vue (une seule pastille sans contour), en proportion du
+// plus grand côté du plan : les mêmes pour tous les locaux, pour qu'ils gardent leurs proportions
+const AIR_VUE_LOCAL = 0.02;
+const TAILLE_VUE_LOCAL_MIN = 0.06;
+const VUE_LOCAL_REFERENCE = 0.3;   // agrandissement maximal : 30 % du plan sur toute la largeur de la page
+const DIAMETRE_PUCE = 9;   // rond de couleur du statut, devant le n° de la remarque dans les listes
 // Trait noir sous les titres : même épaisseur qu'à l'écran (« 4pt » dans charte.css)
 const EPAISSEUR_SEPARATION =
   parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--trait-separation"));
@@ -2447,6 +2456,7 @@ champLotRapport.addEventListener("change", () => remplirChapitresRapport(null));
 ficheRapport.addEventListener("close", () => {
   if (ficheRapport.returnValue !== "produire") return;
   produireRapport({
+    parLocal: el("champTypeRapport").value === "local",
     seulementOuvertes: champStatutRapport.value === "ouvertes",
     niveauId: champNiveauRapport.value || null,   // « — » = pas de filtre
     localId: champLocalRapport.value || null,
@@ -2506,23 +2516,46 @@ async function produireRapport(filtres) {
         [role, await doc.embedFont(await (await fetch(chemin)).arrayBuffer(), { subset: true })]))),
       page: null,
       y: 0,
-      titreSuite: null   // titre répété en haut des pages suivantes d'une liste
+      titreSuite: null,   // titre répété en haut des pages suivantes d'une liste
+      plans: new Map(),   // PDF des plans déjà lus (planPourRapport)
+      echelles: new Map() // échelle commune des locaux de chaque plan (echelleDesLocaux)
     };
+    const photosDans = (r) => filtres.photos === "liste" ? photosDe.get(r.id) || [] : [];
+    const nomPlan = (plan) => plan.nom + (plan.nombreVersions ? " · indice " + lettreIndice(plan.nombreVersions + 1) : "");
 
     pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe });
 
-    for (const plan of plans) {
-      const duPlan = choisies.filter((r) => r.planId === plan.id);
-      const indice = plan.nombreVersions ? " · indice " + lettreIndice(plan.nombreVersions + 1) : "";
-      await pageDuPlan(mise, plan, plan.nom + indice, duPlan);
+    // Rapport général : tous les plans. Par local : seulement pour les remarques sans local, à la fin.
+    let plansEntiers = plans;
+    let aLister = choisies;
+    let suffixeListe = " : remarques";
+    if (filtres.parLocal) {
+      const contours = await db.contours.where("projetId").equals(projetId).toArray();
+      // Par niveau, puis dans l'ordre de la liste des locaux
+      const rangNiveau = new Map(listesRapport.niveaux.map((n, i) => [n.id, i]));
+      const locaux = [...listesRapport.locaux]
+        .sort((a, b) => (rangNiveau.get(a.niveauId) - rangNiveau.get(b.niveauId)) || (a.ordre - b.ordre));
+      for (const local of locaux) {
+        const duLocal = choisies.filter((r) => r.localId === local.id);
+        if (duLocal.length === 0) continue;
+        const titre = [niveauDe.get(local.niveauId)?.nom, libelleLocal(local)].filter(Boolean).join(" · ");
+        await sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, chapitre, photosDans);
+      }
+      const sansLocal = choisies.filter((r) => !localDe.has(r.localId));
+      plansEntiers = plans.filter((p) => sansLocal.some((r) => r.planId === p.id));
+      aLister = sansLocal;
+      suffixeListe = " : remarques sans local";
+    }
+
+    for (const plan of plansEntiers) {
+      const duPlan = aLister.filter((r) => r.planId === plan.id);
+      await pageDuPlan(mise, plan, nomPlan(plan), duPlan);
 
       // Liste des remarques du plan, sur des pages A4 en hauteur
       nouvellePageRapport(mise);
-      ecrireTitre(mise, plan.nom + indice + " : remarques", 16, true);
-      mise.titreSuite = plan.nom + indice + " : remarques (suite)";
-      for (const r of duPlan) {
-        await ligneRemarque(mise, r, lieu(r), chapitre(r), filtres.photos === "liste" ? photosDe.get(r.id) || [] : []);
-      }
+      ecrireTitre(mise, nomPlan(plan) + suffixeListe, 16, true);
+      mise.titreSuite = nomPlan(plan) + suffixeListe + " (suite)";
+      for (const r of duPlan) await ligneRemarque(mise, r, lieu(r), chapitre(r), photosDans(r));
       mise.titreSuite = null;
     }
 
@@ -2538,7 +2571,7 @@ async function produireRapport(filtres) {
     piedsDePage(mise);
     const resultat = await doc.save();
     telecharger(new Blob([resultat], { type: "application/pdf" }),
-      nomDeFichier(`${projetCourant.nom} - rapport ${aujourdhui()}`) + ".pdf");
+      nomDeFichier(`${projetCourant.nom} - rapport${filtres.parLocal ? " par local" : ""} ${aujourdhui()}`) + ".pdf");
   } catch (erreur) {
     alert("Impossible de produire le rapport : " + erreur.message);
   } finally {
@@ -2558,6 +2591,7 @@ function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }
   grilleRapport(mise, [
     ["projet", [{ texte: projetCourant.nom, gras: true }]],
     ["date", [{ texte: formaterDate(aujourdhui()) }]],
+    ["type", [{ texte: filtres.parLocal ? "Par local" : "Général" }]],
     ["remarques", [{ texte: filtres.seulementOuvertes ? "Ouvertes seulement" : "Toutes (ouvertes et levées)" }]],
     filtres.niveauId && ["niveau", [{ texte: niveauDe.get(filtres.niveauId).nom }]],
     filtres.localId && ["local", [{ texte: libelleLocal(localDe.get(filtres.localId)) }]],
@@ -2601,11 +2635,7 @@ function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }
 // ----- Page d'un plan : le plan entier (vectoriel), avec les pastilles des remarques choisies -----
 // Page A4 en largeur ou en hauteur selon le plan.
 async function pageDuPlan(mise, plan, titre, duPlan) {
-  const octets = await plan.fichier.arrayBuffer();
-  // Copie des octets pour pdf.js (voir exporterPlanAnnote)
-  const pagePdfjs = await (await pdfjsLib.getDocument({ data: octets.slice(0) }).promise).getPage(plan.page);
-  const vue = pagePdfjs.getViewport({ scale: 1 });
-
+  const { vue } = await planPourRapport(mise, plan);
   nouvellePageRapport(mise, vue.width > vue.height ? [A4[1], A4[0]] : A4);
   ecrireTitre(mise, titre, 16, true);
   const largeurPage = mise.page.getWidth();
@@ -2617,23 +2647,52 @@ async function pageDuPlan(mise, plan, titre, duPlan) {
   const x = MARGE + (largeurZone - largeur) / 2;
   const y = MARGE + HAUTEUR_PIED + (hauteurZone - hauteur) / 2;
 
+  await dessinerVuePlan(mise, plan, PLAN_ENTIER, x, y, largeur, hauteur);
+  for (const r of duPlan) {
+    dessinerPastillePdf(mise.page, mise.texteGras, x + r.x * largeur, y + (1 - r.y) * hauteur, PASTILLE_RAPPORT, r);
+  }
+}
+
+// PDF du plan lu une seule fois par rapport (un même plan sert à plusieurs locaux)
+async function planPourRapport(mise, plan) {
+  if (!mise.plans.has(plan.id)) {
+    const octets = await plan.fichier.arrayBuffer();
+    // Copie des octets pour pdf.js (voir exporterPlanAnnote)
+    const pagePdfjs = await (await pdfjsLib.getDocument({ data: octets.slice(0) }).promise).getPage(plan.page);
+    mise.plans.set(plan.id, { octets, pagePdfjs, vue: pagePdfjs.getViewport({ scale: 1 }), source: null });
+  }
+  return mise.plans.get(plan.id);
+}
+
+// Dessine la partie « zone » du plan (en proportion, 0 à 1, comme à l'écran) dans le rectangle donné
+// (x, y : coin en bas à gauche, en points PDF). Le plan reste vectoriel ; s'il est protégé (chiffré),
+// pdf-lib ne peut pas le reprendre et la zone est mise en image (moins nette).
+async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur) {
+  const infos = await planPourRapport(mise, plan);
+  const { pagePdfjs, vue } = infos;
   try {
-    // Page du plan reprise telle quelle (cadre vu par pdf.js), tournée comme à l'écran
-    const source = await PDFDocument.load(octets);
-    const [gauche, bas, droite, haut] = pagePdfjs.view;
-    const integree = await mise.doc.embedPage(source.getPage(plan.page - 1), { left: gauche, bottom: bas, right: droite, top: haut });
+    if (!infos.source) infos.source = await PDFDocument.load(infos.octets);
+    // Coins de la zone en points PDF (page non tournée) : pdf.js tient compte du cadre et de la rotation
+    const [[xa, ya], [xb, yb]] = [[zone.x0, zone.y0], [zone.x1, zone.y1]]
+      .map(([px, py]) => vue.convertToPdfPoint(px * vue.width, py * vue.height));
+    const integree = await mise.doc.embedPage(infos.source.getPage(plan.page - 1),
+      { left: Math.min(xa, xb), bottom: Math.min(ya, yb), right: Math.max(xa, xb), top: Math.max(ya, yb) });
+    const echelle = largeur / (vue.rotation % 180 ? integree.height : integree.width);
     const l = integree.width * echelle;    // taille avant rotation
     const h = integree.height * echelle;
     // La rotation se fait autour du point d'ancrage : on le choisit pour que la page tournée tombe dans la zone
     const ancre = { 0: [x, y], 90: [x, y + l], 180: [x + l, y + h], 270: [x + h, y] }[vue.rotation];
     mise.page.drawPage(integree, { x: ancre[0], y: ancre[1], xScale: echelle, yScale: echelle, rotate: degrees(-vue.rotation) });
   } catch {
-    // PDF protégé (chiffré) : pdf-lib ne peut pas le reprendre ; le plan est mis en image (moins net)
-    const finesse = 2400 / Math.max(vue.width, vue.height);
-    const vueImage = pagePdfjs.getViewport({ scale: finesse });
+    const largeurZone = (zone.x1 - zone.x0) * vue.width;
+    const hauteurZone = (zone.y1 - zone.y0) * vue.height;
+    const finesse = 2400 / Math.max(largeurZone, hauteurZone);
+    const vueImage = pagePdfjs.getViewport({
+      scale: finesse, offsetX: -zone.x0 * vue.width * finesse, offsetY: -zone.y0 * vue.height * finesse
+    });
     const toile = document.createElement("canvas");
-    toile.width = Math.round(vueImage.width);
-    toile.height = Math.round(vueImage.height);
+    toile.width = Math.round(largeurZone * finesse);
+    toile.height = Math.round(hauteurZone * finesse);
     const ctx = toile.getContext("2d");
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, toile.width, toile.height);
@@ -2641,22 +2700,99 @@ async function pageDuPlan(mise, plan, titre, duPlan) {
     const image = await mise.doc.embedJpg(await octetsJpeg(toile));
     mise.page.drawImage(image, { x, y, width: largeur, height: hauteur });
   }
+}
 
-  for (const r of duPlan) {
-    dessinerPastillePdf(mise.page, mise.texteGras, x + r.x * largeur, y + (1 - r.y) * hauteur, PASTILLE_RAPPORT, r);
+// ----- Rapport par local : titre, vue recadrée sur le local dans chaque plan où il a des remarques
+// (pastilles du local seulement), puis la liste de ses remarques -----
+// Chaque local commence sur une nouvelle page (il ne déborde sur la suivante que si ses remarques
+// l'imposent). Tous les locaux d'un même plan sont dessinés à la même échelle (`echelleDesLocaux`).
+async function sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, chapitre, photosDans) {
+  nouvellePageRapport(mise);
+  ecrireTitre(mise, titre, 16, true);
+  for (const plan of plans.filter((p) => duLocal.some((r) => r.planId === p.id))) {
+    const ici = duLocal.filter((r) => r.planId === plan.id);
+    const contour = contours.find((c) => c.localId === local.id && c.planId === plan.id);
+    const { vue } = await planPourRapport(mise, plan);
+    // Le contour sert seulement à cadrer la vue : il n'est pas dessiné
+    const zone = zoneAutour([...(contour ? contour.points : []), ...ici.map((r) => [r.x, r.y])], vue);
+    const largeurZone = (zone.x1 - zone.x0) * vue.width;
+    const hauteurZone = (zone.y1 - zone.y0) * vue.height;
+    const echelle = Math.min(echelleDesLocaux(mise, plan, vue, contours), echelleQuiTient(zone, vue));
+    const largeur = largeurZone * echelle;
+    const hauteur = hauteurZone * echelle;
+
+    placeRapport(mise, 16 + hauteur);
+    ecrireTexte(mise, nomPlan(plan), MARGE, mise.y - 9.5, 9.5, mise.etiquette, "--encre-douce");
+    mise.y -= 16;
+    const x = MARGE + (A4[0] - 2 * MARGE - largeur) / 2;
+    const y = mise.y - hauteur;
+    await dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur);
+    mise.page.drawRectangle({ x, y, width: largeur, height: hauteur, borderColor: couleurPdf("--trait"), borderWidth: 0.5 });
+
+    // Passage d'un point du plan (proportion) à la page du rapport
+    const versPage = ([px, py]) => [x + (px - zone.x0) / (zone.x1 - zone.x0) * largeur,
+      y + (1 - (py - zone.y0) / (zone.y1 - zone.y0)) * hauteur];
+    for (const r of ici) {
+      const [px, py] = versPage([r.x, r.y]);
+      dessinerPastillePdf(mise.page, mise.texteGras, px, py, PASTILLE_RAPPORT, r);
+    }
+    mise.y -= hauteur + 12;
   }
+
+  // Liste des remarques du local (le local est dans le titre : seul le chapitre est rappelé)
+  mise.titreSuite = titre + " (suite)";
+  for (const r of duLocal) await ligneRemarque(mise, r, null, chapitre(r), photosDans(r));
+  mise.titreSuite = null;
+}
+
+// Zone (en proportion du plan) autour de points [x, y] : un peu d'air, une taille minimale, sans
+// sortir du plan. Air et taille minimale sont comptés sur le plus grand côté du plan, pour être les
+// mêmes en largeur et en hauteur et pour tous les locaux.
+function zoneAutour(points, vue) {
+  const cote = Math.max(vue.width, vue.height);
+  const limites = (valeurs, longueur) => {
+    let debut = Math.min(...valeurs);
+    let fin = Math.max(...valeurs);
+    const manque = TAILLE_VUE_LOCAL_MIN * cote / longueur - (fin - debut);
+    if (manque > 0) { debut -= manque / 2; fin += manque / 2; }
+    const air = AIR_VUE_LOCAL * cote / longueur;
+    return [Math.max(0, debut - air), Math.min(1, fin + air)];
+  };
+  const [x0, x1] = limites(points.map((p) => p[0]), vue.width);
+  const [y0, y1] = limites(points.map((p) => p[1]), vue.height);
+  return { x0, y0, x1, y1 };
+}
+
+// Plus grande échelle à laquelle une zone tient dans la largeur de la page et la hauteur maximale
+function echelleQuiTient(zone, vue) {
+  return Math.min((A4[0] - 2 * MARGE) / ((zone.x1 - zone.x0) * vue.width),
+    HAUTEUR_VUE_LOCAL / ((zone.y1 - zone.y0) * vue.height));
+}
+
+// Échelle commune des locaux d'un plan : celle où le plus grand contour du plan tient (tous les contours,
+// pas seulement ceux du rapport, pour que l'échelle ne change pas selon les filtres). Jamais plus
+// agrandi que si `VUE_LOCAL_REFERENCE` du plan remplissait la largeur : un plan sans contour, ou avec un
+// seul petit contour, ne donne pas une vue démesurée.
+function echelleDesLocaux(mise, plan, vue, contours) {
+  if (!mise.echelles.has(plan.id)) {
+    const echelleMax = (A4[0] - 2 * MARGE) / (VUE_LOCAL_REFERENCE * Math.max(vue.width, vue.height));
+    mise.echelles.set(plan.id, Math.min(echelleMax, ...contours
+      .filter((c) => c.planId === plan.id)
+      .map((c) => echelleQuiTient(zoneAutour(c.points, vue), vue))));
+  }
+  return mise.echelles.get(plan.id);
 }
 
 // ----- Une remarque de la liste : pastille, lieu · chapitre, statut · date, description, photos -----
 async function ligneRemarque(mise, r, lieu, chapitre, photos) {
   const largeurPage = mise.page.getWidth();
-  const xTexte = MARGE + PASTILLE_RAPPORT + 8;
+  const xTexte = MARGE + largeurNumero(mise);
   const largeurTexte = largeurPage - MARGE - xTexte;
   const lignes = couperLignes(r.texte || "", mise.texte, 10.5, largeurTexte);
 
   placeRapport(mise, 17 + lignes.length * 13.5 + 6);
   const haut = mise.y;
-  dessinerPastillePdf(mise.page, mise.texteGras, MARGE + PASTILLE_RAPPORT / 2, haut - 2 - PASTILLE_RAPPORT / 2, PASTILLE_RAPPORT, r);
+  ecrireNumero(mise, r, haut - 10.5);
   const droite = (r.statut === "levee" ? "levée" : "ouverte") + (r.date ? " · " + formaterDate(r.date) : "");
   const largeurDroite = mise.etiquette.widthOfTextAtSize(droite, 9.5);
   const entete = [lieu, chapitre].filter(Boolean).join(" · ") || "—";
@@ -2719,8 +2855,8 @@ async function photosEnFin(mise, r, lieu, photos) {
     // Le titre de la remarque reste avec sa première rangée de photos
     placeRapport(mise, (i === 0 ? 22 : 0) + hauteurRangee);
     if (i === 0) {
-      dessinerPastillePdf(mise.page, mise.texteGras, MARGE + PASTILLE_RAPPORT / 2, mise.y - 2 - PASTILLE_RAPPORT / 2, PASTILLE_RAPPORT, r);
-      ecrireTexte(mise, `n° ${r.numero}` + (lieu ? " · " + lieu : ""), MARGE + PASTILLE_RAPPORT + 8, mise.y - 10.5, 10.5, mise.texteGras);
+      ecrireNumero(mise, r, mise.y - 10.5);
+      if (lieu) ecrireTexte(mise, lieu, MARGE + largeurNumero(mise), mise.y - 10.5, 10.5, mise.texteGras);
       mise.y -= 22;
     }
     let x = MARGE;
@@ -2733,6 +2869,23 @@ async function photosEnFin(mise, r, lieu, photos) {
     mise.y -= hauteurRangee + ECART;
   }
   mise.y -= 12;
+}
+
+// N° d'une remarque dans une liste, à la marge : rond de la couleur du statut, puis le n° en Roboto
+// Condensed 600, à la taille du chapitre. « ligneDeBase » : bas des lettres.
+function ecrireNumero(mise, r, ligneDeBase) {
+  mise.page.drawCircle({
+    x: MARGE + DIAMETRE_PUCE / 2,
+    y: ligneDeBase + mise.texteGras.heightAtSize(10.5, { descender: false }) / 2,
+    size: DIAMETRE_PUCE / 2,
+    color: couleurPdf(r.statut === "levee" ? "--statut-levee" : "--statut-ouverte")
+  });
+  ecrireTexte(mise, String(r.numero), MARGE + DIAMETRE_PUCE + 4, ligneDeBase, 10.5, mise.texteGras);
+}
+
+// Place réservée au rond et au n° (jusqu'à 3 chiffres) : les textes des remarques restent alignés
+function largeurNumero(mise) {
+  return DIAMETRE_PUCE + 4 + mise.texteGras.widthOfTextAtSize("000", 10.5) + 10;
 }
 
 // ----- Outils de mise en page du rapport -----

@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=33">
-  <link rel="stylesheet" href="css/style.css?v=33">
+  <link rel="stylesheet" href="css/charte.css?v=36">
+  <link rel="stylesheet" href="css/style.css?v=36">
 </head>
 <body>
 
@@ -220,6 +220,13 @@
     <form method="dialog">
       <h2>Rapport</h2>
       <div class="grilleFiche">
+        <!-- Général : plan par plan ; par local : vue recadrée sur chaque local et ses remarques -->
+        <label><span class="etiquette">type</span>
+          <select id="champTypeRapport">
+            <option value="general">Général</option>
+            <option value="local">Par local</option>
+          </select>
+        </label>
         <label><span class="etiquette">remarques</span>
           <select id="champStatutRapport">
             <option value="toutes">Toutes</option>
@@ -304,6 +311,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=33"></script>
+  <script type="module" src="js/app.js?v=36"></script>
 </body>
 </html>
