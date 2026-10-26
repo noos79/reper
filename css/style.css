@@ -265,8 +265,8 @@ header .bouton { white-space: nowrap; }
 .pastille.consultation { cursor: default; }   /* ancienne version : pastille sans fiche */
 
 /* ===== Fiche remarque et fenêtre « plan » (niveau et lot) ===== */
-/* « :is(#fiche, #fichePlan) » : la même règle vaut pour les deux fenêtres */
-:is(#fiche, #fichePlan) {
+/* « :is(#fiche, #fichePlan, #ficheCadrage) » : la même règle vaut pour les trois fenêtres */
+:is(#fiche, #fichePlan, #ficheCadrage) {
   width: min(92vw, 420px);
   /* Centrée dans la zone visible au-dessus du clavier (variables remplies par app.js) */
   top: var(--haut-visible, 0px);
@@ -280,7 +280,7 @@ header .bouton { white-space: nowrap; }
   color: var(--encre);
 }
 
-:is(#fiche, #fichePlan)::backdrop { background: rgba(17, 17, 17, 0.35); }
+:is(#fiche, #fichePlan, #ficheCadrage)::backdrop { background: rgba(17, 17, 17, 0.35); }
 
 /* PC et tablette en paysage : la fiche flotte à droite, le plan reste visible à gauche.
    Les téléphones en paysage (hauteur < 560 px) gardent la fiche au centre. */
@@ -293,7 +293,7 @@ header .bouton { white-space: nowrap; }
 
 #titreFiche:focus { outline: none; }   /* pas de cadre autour du titre quand il reçoit le focus */
 
-:is(#fiche, #fichePlan) h2 {
+:is(#fiche, #fichePlan, #ficheCadrage) h2 {
   margin: 0 0 20px;
   padding-bottom: 12px;
   border-bottom: var(--trait-separation) solid var(--encre);
@@ -301,7 +301,7 @@ header .bouton { white-space: nowrap; }
   font-weight: var(--graisse-titre);
 }
 
-:is(#fiche, #fichePlan) label {
+:is(#fiche, #fichePlan, #ficheCadrage) label {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -325,9 +325,9 @@ header .bouton { white-space: nowrap; }
 }
 
 /* Champs sans trait ; seul le texte de la remarque est souligné d'un trait noir */
-:is(#fiche, #fichePlan) textarea,
-:is(#fiche, #fichePlan) input,
-:is(#fiche, #fichePlan) select {
+:is(#fiche, #fichePlan, #ficheCadrage) textarea,
+:is(#fiche, #fichePlan, #ficheCadrage) input,
+:is(#fiche, #fichePlan, #ficheCadrage) select {
   font: inherit;
   font-size: var(--taille-texte);
   color: var(--encre);
@@ -339,14 +339,14 @@ header .bouton { white-space: nowrap; }
   outline: none;
 }
 
-:is(#fiche, #fichePlan) textarea {
+:is(#fiche, #fichePlan, #ficheCadrage) textarea {
   resize: vertical;
   border-bottom: var(--trait-champ) solid var(--encre);
 }
 
-:is(#fiche, #fichePlan) textarea:focus,
-:is(#fiche, #fichePlan) input:focus,
-:is(#fiche, #fichePlan) select:focus {
+:is(#fiche, #fichePlan, #ficheCadrage) textarea:focus,
+:is(#fiche, #fichePlan, #ficheCadrage) input:focus,
+:is(#fiche, #fichePlan, #ficheCadrage) select:focus {
   border-bottom: 2px solid var(--accent);
 }
 
@@ -395,7 +395,7 @@ header .bouton { white-space: nowrap; }
   margin-bottom: 18px;
 }
 
-:is(#fiche, #fichePlan) .grilleFiche label,
+:is(#fiche, #fichePlan, #ficheCadrage) .grilleFiche label,
 .grilleFiche .champPhotos { display: contents; }
 
 .grilleFiche .etiquette {
@@ -598,6 +598,28 @@ header h1 {
 }
 
 .nomIntervenant { font-weight: var(--graisse-titre); }
+
+/* Fenêtre « mettre à jour le plan » : les sauts de ligne du texte sont respectés */
+#texteCadrage {
+  margin: 0 0 18px;
+  white-space: pre-line;
+}
+
+/* Repères touchés pendant le recalage : disque turquoise, chiffre noir, taille constante au zoom */
+.repere {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--encre);
+  font: var(--graisse-titre) 12px var(--police-texte);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(calc(1 / var(--echelle)));
+}
 
 /* Anciennes versions d'un plan (indices), en retrait sous leur plan */
 .liste li.ancienneVersion { padding-left: 24px; }

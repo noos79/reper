@@ -171,6 +171,7 @@ function afficherEcran(idEcran) {
 el("retourProjets").addEventListener("click", afficherProjets);
 el("retourProjet").addEventListener("click", () => {
   quitterModeContours();
+  arreterRecalage();   // recalage abandonné : les pastilles restent où elles étaient
   ouvrirProjet(projetCourant);
 });
 
@@ -561,29 +562,51 @@ async function remplacerPdf(plan, fichier) {
     return;
   }
 
-  if (!confirm(
-    `Remplacer le PDF du plan « ${actuel.nom} » par « ${fichier.name} » ?\n\n` +
-    `Le PDF actuel sera gardé comme indice ${indice}, consultable avec ses pastilles. ` +
-    `Les remarques restent à la même place sur le nouveau plan.`
-  )) return;
+  // Question : même cadrage (rien ne bouge) ou recalage par deux repères
+  const choix = await demanderCadrage(
+    `Remplacer le PDF du plan « ${actuel.nom} » par « ${fichier.name} » ? ` +
+    `Le PDF actuel sera gardé comme indice ${indice}, consultable avec ses pastilles.\n\n` +
+    `« Même cadrage » : les pastilles restent à la même place (plan réexporté à l'identique). ` +
+    `« Recaler » : tu touches deux repères sur l'ancien plan, puis les mêmes sur le nouveau, ` +
+    `et les pastilles suivent.`
+  );
+  if (choix !== "meme" && choix !== "recaler") return;
 
+  const version = {
+    id: crypto.randomUUID(),
+    projetId: actuel.projetId,
+    planId: actuel.id,
+    rang,
+    indice,
+    fichier: actuel.fichier,
+    page: actuel.page,
+    remplaceLe: aujourdhui()
+  };
   await db.transaction("rw", db.plans, db.remarques, db.versionsPlan, async () => {
+    // Pastilles telles qu'elles étaient sur ce PDF (lecture seule)
     const remarquesDuPlan = await db.remarques.where("planId").equals(plan.id).toArray();
-    await db.versionsPlan.add({
-      id: crypto.randomUUID(),
-      projetId: actuel.projetId,
-      planId: actuel.id,
-      rang,
-      indice,
-      fichier: actuel.fichier,
-      page: actuel.page,
-      remplaceLe: aujourdhui(),
-      // Pastilles telles qu'elles étaient sur ce PDF (lecture seule)
-      pastilles: remarquesDuPlan.map((r) => ({ numero: r.numero, statut: r.statut, x: r.x, y: r.y }))
-    });
+    version.pastilles = remarquesDuPlan.map((r) => ({ numero: r.numero, statut: r.statut, x: r.x, y: r.y }));
+    await db.versionsPlan.add(version);
     await db.plans.update(actuel.id, { fichier, page: 1, nombreVersions: rang });
   });
-  await ouvrirProjet(projetCourant);
+
+  if (choix === "recaler") {
+    await commencerRecalage(await db.plans.get(actuel.id), version);
+  } else {
+    await ouvrirProjet(projetCourant);
+  }
+}
+
+// Fenêtre de choix du cadrage ; rend « meme », « recaler », ou autre chose si on annule
+function demanderCadrage(texte) {
+  const fenetre = el("ficheCadrage");
+  // Espaces insécables dans les guillemets : « et » ne restent jamais seuls en bout de ligne
+  el("texteCadrage").textContent = texte.replace(/« /g, "« ").replace(/ »/g, " »");
+  fenetre.returnValue = "";
+  fenetre.showModal();
+  return new Promise((resolu) => {
+    fenetre.addEventListener("close", () => resolu(fenetre.returnValue), { once: true });
+  });
 }
 
 async function supprimerVersion(plan, version) {
@@ -1232,7 +1255,7 @@ contenu.addEventListener("pointerdown", (e) => {
   if (!e.isPrimary) { annulerAppui(); return; }
   // En mode contours, toucher dessine ; pendant un déplacement, toucher place la pastille
   // Ancienne version : lecture seule, pas de nouvelle remarque
-  if (e.target !== canevas || modeContours || remarqueADeplacer || versionConsultee) return;
+  if (e.target !== canevas || modeContours || remarqueADeplacer || versionConsultee || recalage) return;
   pointDepart = { x: e.clientX, y: e.clientY };
   minuteur = setTimeout(() => {
     minuteur = null;
@@ -1778,6 +1801,184 @@ async function deplacerPastille(clientX, clientY) {
 }
 
 // ===================================================================
+// RECALAGE D'UN PLAN MIS À JOUR (deux repères)
+// ===================================================================
+// Après « recaler par deux points » : on touche deux repères sur l'ancien plan (indice), puis les mêmes
+// sur le nouveau. On en déduit le passage de l'un à l'autre (décalage, agrandissement, rotation), qu'on
+// applique aux pastilles et aux contours du plan. Le calcul se fait en points PDF (et non en proportion
+// du plan), pour ne pas déformer si les deux PDF n'ont pas les mêmes proportions.
+const barreRecalage = el("barreRecalage");
+const ECART_MIN_REPERES = 30;   // pixels à l'écran : deux repères trop proches donnent un calcul imprécis
+let recalage = null;            // { plan, version, anciens, nouveaux, tailleAncien, tailleNouveau }
+let toucheRecalage = null;
+
+async function commencerRecalage(plan, version) {
+  await ouvrirPlan(plan, version);   // l'ancien plan d'abord
+  recalage = { plan, version, anciens: [], nouveaux: [], tailleAncien: taillePage(), tailleNouveau: null };
+  barreRecalage.hidden = false;
+  afficherAideRecalage();
+}
+
+function arreterRecalage() {
+  recalage = null;
+  toucheRecalage = null;
+  barreRecalage.hidden = true;
+  contenu.querySelectorAll(".repere").forEach((r) => r.remove());
+}
+
+// Croix : on abandonne ; le nouveau PDF est gardé, les pastilles restent où elles étaient
+el("annulerRecalage").addEventListener("click", async () => {
+  const plan = recalage.plan;
+  arreterRecalage();
+  await ouvrirPlan(plan);
+});
+
+// Taille de la page affichée, en points PDF
+function taillePage() {
+  const vue = pageCourante.getViewport({ scale: 1 });
+  return { largeur: vue.width, hauteur: vue.height };
+}
+
+function afficherAideRecalage() {
+  const textes = [
+    `Ancien plan (indice ${recalage.version.indice}) : touche un premier repère facile à retrouver (angle de mur, axe…).`,
+    `Ancien plan (indice ${recalage.version.indice}) : touche un second repère, loin du premier.`,
+    "Nouveau plan : touche le même premier repère.",
+    "Nouveau plan : touche le même second repère."
+  ];
+  el("aideRecalage").textContent = textes[recalage.anciens.length + recalage.nouveaux.length];
+}
+
+// Une touche brève pose un repère ; glisser déplace le plan
+contenu.addEventListener("pointerdown", (e) => {
+  if (!recalage) return;
+  toucheRecalage = e.isPrimary && e.target === canevas ? { x: e.clientX, y: e.clientY } : null;
+});
+
+contenu.addEventListener("pointerup", (e) => {
+  if (!recalage || !toucheRecalage || !e.isPrimary) return;
+  const glisse = Math.hypot(e.clientX - toucheRecalage.x, e.clientY - toucheRecalage.y) > TOLERANCE_MOUVEMENT;
+  toucheRecalage = null;
+  if (!glisse) poserRepere(e.clientX, e.clientY);
+});
+
+async function poserRepere(clientX, clientY) {
+  const rect = canevas.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+  const surAncien = recalage.anciens.length < 2;
+  const reperes = surAncien ? recalage.anciens : recalage.nouveaux;
+  if (reperes.length === 1) {
+    const [x1, y1] = reperes[0];
+    if (Math.hypot((x - x1) * rect.width, (y - y1) * rect.height) < ECART_MIN_REPERES) {
+      alert("Ce repère est trop près du premier. Choisis-en un plus éloigné.");
+      return;
+    }
+  }
+  reperes.push([x, y]);
+  afficherRepere(x, y, reperes.length);
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  if (surAncien && recalage.anciens.length === 2) {
+    // Les deux repères de l'ancien plan sont posés : place au nouveau plan
+    const etat = recalage;
+    await pause(400);   // le temps de voir le second repère
+    await ouvrirPlan(etat.plan);
+    recalage = etat;    // ouvrirPlan ne connaît pas le recalage : on le reprend
+    recalage.tailleNouveau = taillePage();
+    contenu.querySelectorAll(".repere").forEach((r) => r.remove());
+  }
+  if (recalage.nouveaux.length === 2) {
+    await terminerRecalage();
+    return;
+  }
+  afficherAideRecalage();
+}
+
+function afficherRepere(x, y, numero) {
+  const repere = document.createElement("span");
+  repere.className = "repere";
+  repere.textContent = numero;
+  repere.style.left = (x * 100) + "%";
+  repere.style.top = (y * 100) + "%";
+  contenu.append(repere);
+}
+
+// Passage de l'ancien plan au nouveau. Un point du plan est vu comme un nombre complexe z = x + i·y
+// (en points PDF) : le passage s'écrit z' = a·z + b, où a contient l'agrandissement et la rotation, et b
+// le décalage. Deux repères suffisent à trouver a et b.
+function calculerPassage({ anciens, nouveaux, tailleAncien, tailleNouveau }) {
+  const enPoints = ([x, y], taille) => ({ re: x * taille.largeur, im: y * taille.hauteur });
+  const moins = (u, v) => ({ re: u.re - v.re, im: u.im - v.im });
+  const fois = (u, v) => ({ re: u.re * v.re - u.im * v.im, im: u.re * v.im + u.im * v.re });
+  const divise = (u, v) => {
+    const n = v.re * v.re + v.im * v.im;
+    return { re: (u.re * v.re + u.im * v.im) / n, im: (u.im * v.re - u.re * v.im) / n };
+  };
+  const p1 = enPoints(anciens[0], tailleAncien), p2 = enPoints(anciens[1], tailleAncien);
+  const q1 = enPoints(nouveaux[0], tailleNouveau), q2 = enPoints(nouveaux[1], tailleNouveau);
+  const a = divise(moins(q2, q1), moins(p2, p1));
+  const b = moins(q1, fois(a, p1));
+  return {
+    agrandissement: Math.hypot(a.re, a.im),
+    // Rend la nouvelle position (en proportion du nouveau plan) d'un point de l'ancien
+    transformer: (point) => {
+      const z = fois(a, enPoints(point, tailleAncien));
+      return [(z.re + b.re) / tailleNouveau.largeur, (z.im + b.im) / tailleNouveau.hauteur];
+    }
+  };
+}
+
+async function terminerRecalage() {
+  const etat = recalage;
+  const passage = calculerPassage(etat);
+  if (passage.agrandissement < 0.1 || passage.agrandissement > 10) {
+    alert("Les repères ne correspondent pas (échelle incohérente). Recalage abandonné : les pastilles " +
+      "restent où elles étaient. Tu peux les déplacer une à une avec « déplacer ».");
+    arreterRecalage();
+    await ouvrirPlan(etat.plan);
+    return;
+  }
+
+  // Une position recalée hors du nouveau plan est ramenée au bord
+  let auBord = 0;
+  const recaler = (point) => {
+    const [x, y] = passage.transformer(point);
+    const dedans = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+    if (dedans[0] !== x || dedans[1] !== y) auBord++;
+    return [arrondi(dedans[0]), arrondi(dedans[1])];
+  };
+
+  // Aperçu : les pastilles du plan affiché sont déplacées (pas encore enregistrées)
+  const nouvellesPlaces = remarques.map((r) => recaler([r.x, r.y]));
+  remarques.forEach((r, i) => { [r.x, r.y] = nouvellesPlaces[i]; });
+  const pastillesAuBord = auBord;
+  dessinerPastilles();
+  await pause(100);   // laisse l'écran afficher l'aperçu avant la question
+
+  const garder = confirm(
+    `Pastilles recalées sur le nouveau plan (${remarques.length} remarque(s)` +
+    (pastillesAuBord ? `, dont ${pastillesAuBord} ramenée(s) au bord du plan` : "") +
+    `). Garder ce recalage ?`
+  );
+  arreterRecalage();
+  if (!garder) {
+    await ouvrirPlan(etat.plan);   // relit les positions enregistrées : rien n'a changé
+    return;
+  }
+
+  // Enregistrement : pastilles et contours du plan, ensemble
+  await db.transaction("rw", db.remarques, db.contours, async () => {
+    for (const r of remarques) await db.remarques.update(r.id, { x: r.x, y: r.y });
+    const contours = await db.contours.where("planId").equals(etat.plan.id).toArray();
+    for (const c of contours) await db.contours.update(c.id, { points: c.points.map(recaler) });
+  });
+  contoursPlan = await db.contours.where("planId").equals(etat.plan.id).toArray();
+}
+
+// ===================================================================
 // PHOTOS DES REMARQUES
 // ===================================================================
 // Une photo garde son image d'origine et, à part, ses traits d'annotation : l'annotation reste
@@ -2122,6 +2323,11 @@ function analyserCsv(texte) {
     lignes.push(ligne);
   }
   return lignes;
+}
+
+// Attend un moment (en millisecondes), par exemple pour laisser l'écran se mettre à jour
+function pause(duree) {
+  return new Promise((resolu) => setTimeout(resolu, duree));
 }
 
 // Retire les caractères interdits dans un nom de fichier Windows ou Android

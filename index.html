@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=27">
-  <link rel="stylesheet" href="css/style.css?v=27">
+  <link rel="stylesheet" href="css/charte.css?v=28">
+  <link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body>
 
@@ -109,12 +109,30 @@
       <button type="button" id="effacerContour" class="bouton secondaire">effacer le contour</button>
       <button type="button" id="finContours" class="bouton">terminé</button>
     </div>
+    <!-- Recalage d'un plan mis à jour : deux repères sur l'ancien plan, puis les mêmes sur le nouveau -->
+    <div id="barreRecalage" class="barreContours" hidden>
+      <span id="aideRecalage" class="aideContours"></span>
+      <button type="button" id="annulerRecalage" class="bouton" aria-label="Annuler le recalage" title="Annuler le recalage"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
     <!-- Déplacement d'une pastille : on touche sa nouvelle place sur le plan -->
     <div id="barreDeplacement" class="barreContours" hidden>
       <span id="aideDeplacement" class="aideContours"></span>
       <button type="button" id="annulerDeplacement" class="bouton" aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </section>
+
+  <!-- Mise à jour du PDF d'un plan : même cadrage, ou recalage par deux repères -->
+  <dialog id="ficheCadrage">
+    <form method="dialog">
+      <h2>Mettre à jour le plan</h2>
+      <p id="texteCadrage"></p>
+      <div class="boutonsFiche">
+        <button value="meme">même cadrage</button>
+        <button value="recaler" class="secondaire">recaler par deux points</button>
+        <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Fiche remarque -->
   <dialog id="fiche">
@@ -228,6 +246,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=27"></script>
+  <script type="module" src="js/app.js?v=28"></script>
 </body>
 </html>

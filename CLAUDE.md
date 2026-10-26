@@ -89,7 +89,16 @@ Décisions à respecter :
 - **Anciennes versions d'un plan** (indices) : « mettre à jour le PDF » garde le PDF actuel dans
   `versionsPlan`, avec l'indice suivant (`lettreIndice` : 1 → A… 26 → Z, 27 → AA) et une **copie des
   pastilles** (numéro, statut, position) ; le nouveau PDF le remplace dans le plan, dont les remarques ne
-  bougent pas (12c ajoutera le recalage). Le plan actuel porte la lettre qui suit (`nombreVersions` + 1).
+  bougent pas, sauf recalage. Le plan actuel porte la lettre qui suit (`nombreVersions` + 1).
+- **Recalage** (12c) : fenêtre `ficheCadrage` à chaque remplacement : « même cadrage » (rien ne bouge),
+  « recaler par deux points » ou croix (rien n'est remplacé). Recalage : deux repères touchés sur
+  l'ancien plan (indice), puis les mêmes sur le nouveau (touche brève, glisser déplace le plan ; repères
+  à au moins `ECART_MIN_REPERES` pixels l'un de l'autre). Le passage est calculé **en points PDF** (pas en
+  proportion, pour ne pas déformer si les PDF n'ont pas les mêmes proportions) : z' = a·z + b en nombres
+  complexes (agrandissement, rotation, décalage ; `calculerPassage`). Échelle hors de 0,1 à 10 : refusé.
+  Pastilles et **contours** du plan sont recalés ; une position hors du nouveau plan est ramenée au bord.
+  Aperçu, puis « Garder ce recalage ? » : non, croix ou retour = rien n'est enregistré (le nouveau PDF
+  reste, pastilles à leur ancienne place). La copie des pastilles de l'ancienne version ne change pas.
   Les indices ne sont **jamais réutilisés**, même après suppression. Le nouveau PDF est vérifié (lisible
   par pdf.js) avant toute question. Supprimer un plan supprime ses anciennes versions.
 - **Locaux** importés depuis un CSV : colonnes `niveau ; n° ; nom`, séparateur « ; », 1re ligne = titres
@@ -325,10 +334,11 @@ Fait :
       consultable **en lecture seule avec les pastilles à la place qu'elles avaient** (positions
       mémorisées au remplacement), et peut être supprimée. Schéma 7, export version 7.
 
+    - **12c (fait)** : au remplacement, question à chaque fois : « même cadrage » (rien ne bouge) ou
+      « recaler par deux points » (deux repères touchés sur l'ancien puis sur le nouveau plan ; pastilles
+      et contours recalés, après aperçu et confirmation).
+
 À faire, dans cet ordre :
-    - **12c** : au remplacement, question à chaque fois : « même cadrage » (rien ne bouge) ou « recaler
-      par deux points » (deux repères touchés sur l'ancien puis sur le nouveau plan ; pastilles et
-      contours recalés).
     - **12d** : contours redessinables (déjà possible) ; liste des remarques qui changent de local
       après modification des contours, à confirmer avant enregistrement.
 13. Plan annoté en PDF : pastilles dessinées sur le PDF d'origine (bibliothèque pdf-lib, à valider),
