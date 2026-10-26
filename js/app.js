@@ -1328,6 +1328,7 @@ let niveauxProjet = [];    // niveaux et locaux du projet, lus à l'ouverture du
 let locauxProjet = [];
 let coinsEnCours = [];     // coins du contour en train d'être dessiné
 let toucheContour = null;  // début d'une touche sur le plan, en mode contours
+const locauxTouches = new Set();   // locaux dont le contour a été dessiné, modifié ou effacé depuis l'entrée en mode contours
 
 el("modeContours").addEventListener("click", () => {
   if (modeContours) quitterModeContours(); else entrerModeContours();
@@ -1344,6 +1345,7 @@ function entrerModeContours() {
   if (remarqueADeplacer) finirDeplacement();   // on ne déplace pas une pastille en dessinant
   modeContours = true;
   coinsEnCours = [];
+  locauxTouches.clear();
   contenu.classList.add("modeContours");   // cache les pastilles pendant le dessin
   barreContours.hidden = false;
   recadrer();
@@ -1352,6 +1354,9 @@ function entrerModeContours() {
 }
 
 function quitterModeContours() {
+  // Contours modifiés : on vérifie si des remarques changent de local (liste à confirmer)
+  if (modeContours && locauxTouches.size > 0) proposerChangementsDeLocal(new Set(locauxTouches));
+  locauxTouches.clear();
   modeContours = false;
   coinsEnCours = [];
   toucheContour = null;
@@ -1462,6 +1467,7 @@ async function enregistrerContour() {
     points: coinsEnCours
   };
   await db.contours.put(contour);
+  locauxTouches.add(localId);
   contoursPlan = contoursPlan.filter((c) => c.localId !== localId).concat(contour);
   coinsEnCours = [];
   if (navigator.vibrate) navigator.vibrate(30);
@@ -1487,6 +1493,7 @@ boutonEffacerContour.addEventListener("click", async () => {
   const local = locauxProjet.find((l) => l.id === choixLocalContour.value);
   if (!contour || !confirm(`Effacer le contour du local ${libelleLocal(local)} sur ce plan ?`)) return;
   await db.contours.delete(contour.id);
+  locauxTouches.add(contour.localId);
   contoursPlan = contoursPlan.filter((c) => c !== contour);
   remplirChoixLocal(contour.localId);
   dessinerContours();
@@ -1570,8 +1577,10 @@ function deplacerCoin(e, contour, indice, polygone, poignee, nom) {
     poignee.removeEventListener("pointermove", suivre);
     poignee.removeEventListener("pointerup", lacher);
     poignee.removeEventListener("pointercancel", lacher);
-    if (deplace) await db.contours.put(contour);
-    else if (ev.type === "pointerup") await ajouterCoin(ev.clientX, ev.clientY);
+    if (deplace) {
+      await db.contours.put(contour);
+      locauxTouches.add(contour.localId);
+    } else if (ev.type === "pointerup") await ajouterCoin(ev.clientX, ev.clientY);
   };
   poignee.addEventListener("pointermove", suivre);
   poignee.addEventListener("pointerup", lacher);
@@ -1623,6 +1632,63 @@ function moyenne(points, indice) {
 // Garde 4 décimales : précision largement suffisante, données plus légères
 function arrondi(valeur) {
   return Math.round(valeur * 10000) / 10000;
+}
+
+// ----- Remarques qui changent de local après modification des contours -----
+// Une remarque est concernée si elle est maintenant dans le contour d'un autre local, ou si elle n'est
+// plus dans le contour de son local ; et seulement si l'un de ces locaux fait partie des contours
+// modifiés (« touches ») : une remarque dont le local a été choisi à la main n'est pas remise en cause
+// par un contour sans rapport. La liste est proposée, cases cochées ; rien ne change sans validation.
+function proposerChangementsDeLocal(touches) {
+  const changements = [];
+  for (const r of remarques) {
+    const contour = contourSous(r.x, r.y);
+    const nouveau = contour ? contour.localId : null;
+    const actuel = r.localId || null;
+    if (nouveau === actuel) continue;
+    if (!touches.has(nouveau) && !touches.has(actuel)) continue;
+    // Hors de tout contour : on ne retire le local que si ce local a un contour sur ce plan (et que la
+    // remarque n'y est plus)
+    if (!nouveau && !contoursPlan.some((c) => c.localId === actuel)) continue;
+    changements.push({ remarque: r, localId: nouveau });
+  }
+  if (changements.length === 0) return;
+
+  const libelle = (localId) => {
+    const local = locauxProjet.find((l) => l.id === localId);
+    return local ? libelleLocal(local) : "aucun local";
+  };
+  const liste = el("listeChangementsLocal");
+  liste.replaceChildren();
+  changements.sort((a, b) => a.remarque.numero - b.remarque.numero);
+  for (const changement of changements) {
+    const ligne = document.createElement("label");
+    ligne.className = "ligneChangement";
+    const caseACocher = document.createElement("input");
+    caseACocher.type = "checkbox";
+    caseACocher.checked = true;
+    const texte = document.createElement("span");
+    texte.textContent = `n° ${changement.remarque.numero} · ${libelle(changement.remarque.localId)} → ${libelle(changement.localId)}`;
+    ligne.append(caseACocher, texte);
+    liste.append(ligne);
+    changement.caseACocher = caseACocher;
+  }
+
+  const fenetre = el("ficheLocaux");
+  fenetre.returnValue = "";
+  fenetre.showModal();
+  fenetre.addEventListener("close", async () => {
+    if (fenetre.returnValue !== "enregistrer") return;
+    const retenus = changements.filter((c) => c.caseACocher.checked);
+    await db.transaction("rw", db.remarques, async () => {
+      for (const { remarque, localId } of retenus) {
+        const local = locauxProjet.find((l) => l.id === localId);
+        const modifications = { localId, niveauId: local ? local.niveauId : remarque.niveauId };
+        await db.remarques.update(remarque.id, modifications);
+        Object.assign(remarque, modifications);   // même objet que dans la liste du plan affiché
+      }
+    });
+  }, { once: true });
 }
 
 // ----- Fiche remarque -----

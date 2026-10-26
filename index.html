@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=28">
-  <link rel="stylesheet" href="css/style.css?v=28">
+  <link rel="stylesheet" href="css/charte.css?v=29">
+  <link rel="stylesheet" href="css/style.css?v=29">
 </head>
 <body>
 
@@ -134,6 +134,20 @@
     </form>
   </dialog>
 
+  <!-- Après modification des contours : remarques qui changent de local, à confirmer -->
+  <dialog id="ficheLocaux">
+    <form method="dialog">
+      <h2>Remarques qui changent de local</h2>
+      <p class="texteFenetre">D'après les contours modifiés, ces remarques sont maintenant dans un autre local.
+        Décoche celles à laisser telles quelles.</p>
+      <div id="listeChangementsLocal" class="listeChangements"></div>
+      <div class="boutonsFiche">
+        <button value="enregistrer" class="principal" aria-label="Enregistrer" title="Enregistrer"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13H4zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+        <button value="annuler" formnovalidate aria-label="Ne rien changer" title="Ne rien changer"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Fiche remarque -->
   <dialog id="fiche">
     <form method="dialog">
@@ -246,6 +260,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=28"></script>
+  <script type="module" src="js/app.js?v=29"></script>
 </body>
 </html>

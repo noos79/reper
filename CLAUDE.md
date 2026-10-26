@@ -125,7 +125,13 @@ Décisions à respecter :
 - **Contours des locaux** : un contour par local et par plan (le même local peut avoir un contour sur
   plusieurs plans), coins **en proportion du plan (0 à 1)**, arrondis à 4 décimales. À la pose d'une
   pastille, le contour qui contient le point donne le niveau et le local (s'ils se chevauchent : le plus
-  petit) ; hors contour, le niveau du plan. Les remarques déjà posées ne sont pas modifiées. Supprimer
+  petit) ; hors contour, le niveau du plan. Les remarques déjà posées ne sont pas modifiées d'office :
+  en quittant le mode contours après avoir dessiné, modifié ou effacé des contours (`locauxTouches`), la
+  fenêtre `ficheLocaux` liste les remarques qui changent de local (`proposerChangementsDeLocal`), cases
+  cochées ; disquette = appliquer les cochées (local et niveau), croix = rien. Remarque concernée : dans
+  le contour d'un autre local, ou plus dans le contour de son local (→ « aucun local »), et seulement si
+  l'un des deux locaux fait partie des contours touchés (un local choisi à la main sans rapport n'est
+  jamais remis en cause). Hors de tout contour, le local n'est retiré que s'il a un contour sur ce plan. Supprimer
   un plan supprime ses contours ; un réimport des locaux efface les contours des locaux disparus (après
   avertissement), les autres survivent car les locaux gardent leur `id`.
 - Photos **réduites à 1600 px** (plus grand côté, JPEG 0,85) à l'ajout. L'image d'origine et les
@@ -337,10 +343,10 @@ Fait :
     - **12c (fait)** : au remplacement, question à chaque fois : « même cadrage » (rien ne bouge) ou
       « recaler par deux points » (deux repères touchés sur l'ancien puis sur le nouveau plan ; pastilles
       et contours recalés, après aperçu et confirmation).
+    - **12d (fait)** : contours redessinables (déjà possible) ; liste des remarques qui changent de local
+      après modification des contours, à confirmer avant enregistrement.
 
 À faire, dans cet ordre :
-    - **12d** : contours redessinables (déjà possible) ; liste des remarques qui changent de local
-      après modification des contours, à confirmer avant enregistrement.
 13. Plan annoté en PDF : pastilles dessinées sur le PDF d'origine (bibliothèque pdf-lib, à valider),
     net à l'impression.
 14. Rapports PDF : rapport général (page de garde, une page par plan, liste des remarques avec
