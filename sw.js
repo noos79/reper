@@ -5,7 +5,7 @@
 
 // Même numéro que « ?v=N » dans index.html : l'augmenter à chaque modification du CSS ou du JS.
 // Un nouveau numéro = un nouveau cache ; l'ancien est effacé.
-const VERSION = 30;
+const VERSION = 33;
 const NOM_CACHE = "suivi-chantier-" + VERSION;
 
 // Fichiers copiés dès l'installation, pour que tout marche hors ligne dès la visite suivante
@@ -17,6 +17,11 @@ const FICHIERS = [
   "manifest.webmanifest",
   "polices/roboto-condensed.woff2",
   "polices/dosis.woff2",
+  // Polices du rapport PDF (une graisse par fichier)
+  "polices/roboto-condensed-400.ttf",
+  "polices/roboto-condensed-600.ttf",
+  "polices/dosis-400.ttf",
+  "polices/dosis-600.ttf",
   "icones/icone-192.png",
   "icones/icone-512.png",
   // Bibliothèques (versions figées : leur contenu ne change jamais)
@@ -25,7 +30,8 @@ const FICHIERS = [
   "https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/+esm",
   "https://cdn.jsdelivr.net/npm/dexie@4.0.10/+esm",
   "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm",
-  "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js"
+  "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js",
+  "https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/+esm"
 ];
 
 // Au-delà de ce délai sans réponse du réseau, on ouvre la page gardée en cache

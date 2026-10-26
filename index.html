@@ -7,8 +7,8 @@
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=30">
-  <link rel="stylesheet" href="css/style.css?v=30">
+  <link rel="stylesheet" href="css/charte.css?v=33">
+  <link rel="stylesheet" href="css/style.css?v=33">
 </head>
 <body>
 
@@ -35,6 +35,7 @@
       <button id="retourProjets" class="bouton" aria-label="Retour aux projets"><svg class="fleche" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3M12 3l-9 9 9 9"/></svg></button>
       <h1 id="titreProjet"></h1>
       <div class="actions">
+        <button id="ouvrirRapport" class="bouton secondaire">rapport</button>
         <button id="ouvrirLocaux" class="bouton secondaire">locaux</button>
         <button id="ouvrirLots" class="bouton secondaire">lots</button>
         <label class="bouton">
@@ -214,6 +215,44 @@
     </form>
   </dialog>
 
+  <!-- Rapport PDF : remarques à reprendre (« — » = pas de filtre) et place des photos -->
+  <dialog id="ficheRapport">
+    <form method="dialog">
+      <h2>Rapport</h2>
+      <div class="grilleFiche">
+        <label><span class="etiquette">remarques</span>
+          <select id="champStatutRapport">
+            <option value="toutes">Toutes</option>
+            <option value="ouvertes">Ouvertes seulement</option>
+          </select>
+        </label>
+        <label><span class="etiquette">niveau</span>
+          <select id="champNiveauRapport"></select>
+        </label>
+        <label><span class="etiquette">local</span>
+          <select id="champLocalRapport"></select>
+        </label>
+        <label><span class="etiquette">lot</span>
+          <select id="champLotRapport"></select>
+        </label>
+        <label><span class="etiquette">chapitre</span>
+          <select id="champChapitreRapport"></select>
+        </label>
+        <label><span class="etiquette">photos</span>
+          <select id="champPhotosRapport">
+            <option value="liste">Dans la liste</option>
+            <option value="fin">À la fin du rapport</option>
+            <option value="sans">Sans photos</option>
+          </select>
+        </label>
+      </div>
+      <div class="boutonsFiche">
+        <button value="produire" class="principal">produire le&nbsp;<span class="sigle">PDF</span></button>
+        <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Niveau et lot d'un plan (facultatifs), proposés d'office dans ses nouvelles remarques -->
   <dialog id="fichePlan">
     <form method="dialog">
@@ -254,12 +293,17 @@
     </div>
   </dialog>
 
+  <!-- Travail en cours (rapport) : peut prendre quelques secondes avec beaucoup de photos -->
+  <div id="bandeauTravail" class="bandeau" hidden>
+    <span>Préparation du rapport…</span>
+  </div>
+
   <!-- Nouvelle version de l'application reçue en arrière-plan (voir sw.js) -->
   <div id="bandeauMiseAJour" class="bandeau" hidden>
     <span>Nouvelle version disponible</span>
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=30"></script>
+  <script type="module" src="js/app.js?v=33"></script>
 </body>
 </html>

@@ -36,7 +36,9 @@ signalée si elle alourdit la saisie.
   - Panzoom `@panzoom/panzoom@4.5.1` (zoom et déplacement)
   - Dexie `dexie@4.0.10` (base IndexedDB)
   - JSZip `jszip@3.10.1` (export et import)
-  - pdf-lib `pdf-lib@1.17.1` (`dist/pdf-lib.esm.min.js` : plan annoté en PDF)
+  - pdf-lib `pdf-lib@1.17.1` (`dist/pdf-lib.esm.min.js` : plan annoté et rapport en PDF)
+  - fontkit `@pdf-lib/fontkit@1.1.1` (polices de la charte dans le rapport ; gros fichier, chargé
+    seulement au premier rapport par `import()`)
 - Hébergement : GitHub Pages (`https://<compte>.github.io/suivi-chantier/`).
 - Tests en local avec l'extension VS Code Live Server.
 - Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`,
@@ -166,7 +168,12 @@ Décisions à respecter :
    de remarques ouvertes), ajout d'un PDF, « modifier » (petite fenêtre `fichePlan` : niveau, lot,
    « mettre à jour le PDF »), « PDF » (plan annoté), suppression ; sous chaque plan, ses **anciennes
    versions** en retrait (« indice A · remplacé le … », de la plus récente à la plus ancienne), qu'on
-   ouvre en les touchant, « PDF » et « supprimer » ; boutons « locaux » et « lots ».
+   ouvre en les touchant, « PDF » et « supprimer » ; boutons « rapport », « locaux » et « lots ».
+   - **Rapport** : fenêtre `ficheRapport` : « remarques » (toutes / ouvertes seulement), niveau, local
+     (réduit au niveau), lot, chapitre (réduit au lot, **sans** choix d'office : un lot seul = tout le
+     lot), « photos » (dans la liste / à la fin du rapport / sans photos) ; « — » = pas de filtre. Les
+     choix restent ceux du rapport précédent. « produire le PDF » ; bandeau `bandeauTravail` pendant la
+     préparation.
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
    - **Lots** (`ecranLots`) : chaque lot en étiquette « lot N · nom » (modifier, supprimer), ses CE en
      dessous (renommer, supprimer), « + ajouter un CE » ; boutons « intervenants » et « nouveau lot ».
@@ -261,7 +268,11 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
 - **Polices**, fichiers dans `polices/` (licence SIL OFL jointe), jamais chargées depuis un site extérieur
   (fonctionnement hors ligne) :
   - Roboto Condensed **Regular (400)** pour le texte, **600** pour les titres ;
-  - **Dosis 400** pour les boutons et les étiquettes. Elle remplace Letter Gothic Std, police de la
+  - **Dosis 400** pour les boutons et les étiquettes.
+  - Rapport PDF : `roboto-condensed-400.ttf`, `roboto-condensed-600.ttf`, `dosis-400.ttf`,
+    `dosis-600.ttf`, une graisse par fichier (pdf-lib ne sait pas choisir une graisse dans les `.woff2`
+    variables de l'écran ; fontkit plante sur les `.woff`/`.woff2`). Sous-ensemble latin de Fontsource,
+    converti de WOFF en TTF sans perte. Elle remplace Letter Gothic Std, police de la
     charte papier, qui est payante (Adobe) et ne peut pas être diffusée.
 - **Boutons** : pastille noire, texte blanc, **minuscules**, bords arrondis à 50 % de la hauteur. Au
   toucher, les couleurs s'inversent. Même taille de texte que le texte courant (`--taille-texte`).
@@ -358,10 +369,26 @@ Fait :
     Limite : un PDF **chiffré** (protégé) est refusé avec un message.
 
 À faire, dans cet ordre :
-14. Rapports PDF : rapport général (page de garde, une page par plan, liste des remarques avec
-    vignettes) et rapport par local (vue recadrée sur le contour, remarques du local) ; filtres
-    (toutes, ouvertes seulement, un lot, un CE, un niveau, un local). La page de garde reprend la liste des
-    entreprises concernées par les remarques du rapport.
+14. Rapports PDF, en deux morceaux (décisions du 26/10/2026) :
+    - **14a (fait)** : rapport général (`produireRapport`), pdf-lib, pages **A4**, polices de la charte (un
+      caractère inconnu des polices, émoji ou flèche par exemple → « ? », `texteLisible`). Page de garde : projet,
+      date, choix des remarques, nombres (ouvertes, levées), légende des pastilles, **entreprises
+      concernées** (entreprise de chaque lot des remarques, avec son adresse ; sous-traitant d'un CE
+      seulement s'il a des remarques ; nombre de remarques sans lot). Puis, pour chaque plan qui a des
+      remarques choisies (par nom) : une page du plan entier (A4 en largeur ou en hauteur selon le plan),
+      **vectoriel** (page reprise avec `embedPage`, cadre et rotation lus par pdf.js), pastilles de
+      `PASTILLE_RAPPORT` (4,5 mm) ; si pdf-lib ne peut pas lire le PDF (chiffré), le plan est mis en image.
+      **Aspect des fiches** : titres en Dosis 600 avec le grand trait noir dessous (`--trait-separation`),
+      page de garde en grille comme la fiche (étiquettes en pastille noire, texte blanc en Dosis 400,
+      valeurs en Roboto Condensed), texte en Roboto Condensed 400 et 600, numéros des pastilles en Roboto
+      Condensed 600, « statut · date » et pied de page en Dosis. Couleurs lues dans `charte.css`.
+      Ensuite la liste des remarques du plan, une ligne par remarque, par n° : pastille, « local · chapitre »
+      (local, sinon niveau ; CE, sinon lot), « statut · date » à droite, description, et selon le choix
+      les **vignettes des photos annotées** (30 mm de haut). Photos « à la fin du rapport » : section
+      « Photos », par remarque (pastille, n°, local) puis ses photos, deux par ligne. Pied de page :
+      projet, date du rapport, « page X / N ». Fichier « projet - rapport AAAA-MM-JJ.pdf ». Le plan annoté
+      seul (étape 13) garde Helvetica.
+    - **14b** : rapport par local (vue recadrée sur le contour, remarques du local).
 15. Note d'envoi du rapport aux entreprises concernées (celles dont l'adresse électronique est définie) :
     par défaut l'entreprise du lot seule, avec la possibilité d'ajouter les sous-traitants des CE.
     Limite : une page web ne peut pas envoyer un courriel elle-même ; piste à étudier : partage du PDF

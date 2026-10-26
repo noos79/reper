@@ -671,34 +671,10 @@ async function exporterPlanAnnote(plan, version = null) {
     const page = doc.getPage(0);
     const police = await doc.embedFont(StandardFonts.HelveticaBold);
     const diametre = Math.max(PASTILLE_PDF_MIN, PASTILLE_PDF_PROPORTION * Math.max(vue.width, vue.height));
-    // Page tournée (plan en paysage, par exemple) : le numéro tourne avec elle pour rester droit
-    const angle = vue.rotation * Math.PI / 180;
 
     for (const r of [...pastilles].sort((a, b) => a.numero - b.numero)) {
       const [x, y] = vue.convertToPdfPoint(r.x * vue.width, r.y * vue.height);
-      page.drawCircle({
-        x, y,
-        size: diametre / 2,   // rayon
-        color: couleurPdf(r.statut === "levee" ? "--statut-levee" : "--statut-ouverte")
-      });
-
-      // Numéro centré dans le cercle, réduit s'il est trop long (au-delà de 80 % du diamètre)
-      const texte = String(r.numero);
-      let taille = diametre * 0.5;
-      taille = Math.min(taille, taille * diametre * 0.8 / police.widthOfTextAtSize(texte, taille));
-      const largeur = police.widthOfTextAtSize(texte, taille);
-      const hauteur = police.heightAtSize(taille, { descender: false });
-      // Point de départ du texte (en bas à gauche), décalé depuis le centre, tourné comme la page
-      const dx = -largeur / 2;
-      const dy = -hauteur / 2;
-      page.drawText(texte, {
-        x: x + dx * Math.cos(angle) - dy * Math.sin(angle),
-        y: y + dx * Math.sin(angle) + dy * Math.cos(angle),
-        size: taille,
-        font: police,
-        color: couleurPdf("--encre"),
-        rotate: degrees(vue.rotation)
-      });
+      dessinerPastillePdf(page, police, x, y, diametre, r, vue.rotation);
     }
 
     const resultat = await doc.save();
@@ -712,6 +688,35 @@ async function exporterPlanAnnote(plan, version = null) {
     exportPlanEnCours = false;
     document.body.style.cursor = "";
   }
+}
+
+// Pastille dans un PDF, centrée en (x, y) : cercle de la couleur du statut, numéro noir centré, réduit
+// s'il est trop long (au-delà de 80 % du diamètre). « rotation » : celle de la page (plan en paysage,
+// par exemple) ; le numéro tourne avec elle pour rester droit une fois la page affichée.
+function dessinerPastillePdf(page, police, x, y, diametre, remarque, rotation = 0) {
+  page.drawCircle({
+    x, y,
+    size: diametre / 2,   // rayon
+    color: couleurPdf(remarque.statut === "levee" ? "--statut-levee" : "--statut-ouverte")
+  });
+
+  const texte = String(remarque.numero);
+  let taille = diametre * 0.5;
+  taille = Math.min(taille, taille * diametre * 0.8 / police.widthOfTextAtSize(texte, taille));
+  const largeur = police.widthOfTextAtSize(texte, taille);
+  const hauteur = police.heightAtSize(taille, { descender: false });
+  // Point de départ du texte (en bas à gauche), décalé depuis le centre, tourné comme la page
+  const angle = rotation * Math.PI / 180;
+  const dx = -largeur / 2;
+  const dy = -hauteur / 2;
+  page.drawText(texte, {
+    x: x + dx * Math.cos(angle) - dy * Math.sin(angle),
+    y: y + dx * Math.sin(angle) + dy * Math.cos(angle),
+    size: taille,
+    font: police,
+    color: couleurPdf("--encre"),
+    rotate: degrees(rotation)
+  });
 }
 
 // Couleur de la charte (variable CSS « #RRVVBB ») au format de pdf-lib (trois valeurs de 0 à 1)
@@ -2363,6 +2368,520 @@ function dessinerPastilles() {
     else pastille.addEventListener("click", () => ouvrirFiche(r, false));
     contenu.appendChild(pastille);
   }
+}
+
+// ===================================================================
+// RAPPORT PDF : page de garde, puis pour chaque plan sa vue avec les pastilles et la liste de ses
+// remarques ; photos dans la liste, à la fin du rapport, ou pas du tout
+// ===================================================================
+const ficheRapport = el("ficheRapport");
+const champStatutRapport = el("champStatutRapport");
+const champNiveauRapport = el("champNiveauRapport");
+const champLocalRapport = el("champLocalRapport");
+const champLotRapport = el("champLotRapport");
+const champChapitreRapport = el("champChapitreRapport");
+const champPhotosRapport = el("champPhotosRapport");
+let listesRapport = { niveaux: [], locaux: [], lots: [], ce: [] };   // choix proposés dans la fenêtre
+let rapportEnCours = false;
+
+// Mise en page (points PDF) : A4, marges de 15 mm
+const A4 = [595.28, 841.89];
+const MARGE = 15 * POINTS_PAR_MM;
+const HAUTEUR_PIED = 8 * POINTS_PAR_MM;          // bas de page réservé au pied (projet, n° de page)
+const PASTILLE_RAPPORT = 4.5 * POINTS_PAR_MM;    // diamètre des pastilles sur le plan et dans la liste
+const HAUTEUR_VIGNETTE_RAPPORT = 30 * POINTS_PAR_MM;   // photos dans la liste
+const HAUTEUR_PHOTO_FIN_MAX = 95 * POINTS_PAR_MM;      // photos à la fin du rapport (deux par ligne)
+const ECART = 4;                                 // entre deux photos
+const HAUTEUR_ETIQUETTE = 16;                    // étiquettes en pastille noire (comme dans la fiche)
+// Trait noir sous les titres : même épaisseur qu'à l'écran (« 4pt » dans charte.css)
+const EPAISSEUR_SEPARATION =
+  parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--trait-separation"));
+
+// Polices de la charte pour le rapport : fichiers TrueType statiques (une graisse par fichier), car
+// pdf-lib ne sait pas choisir une graisse dans les polices « variables » .woff2 de l'écran.
+// Elles ont besoin du module fontkit, chargé seulement au premier rapport (gros fichier).
+const POLICES_RAPPORT = {
+  texte: "polices/roboto-condensed-400.ttf",
+  texteGras: "polices/roboto-condensed-600.ttf",
+  titre: "polices/dosis-600.ttf",
+  etiquette: "polices/dosis-400.ttf"
+};
+const ADRESSE_FONTKIT = "https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/+esm";
+
+el("ouvrirRapport").addEventListener("click", ouvrirRapport);
+
+// Les choix restent ceux du rapport précédent (un choix disparu revient à « — »)
+async function ouvrirRapport() {
+  const projetId = projetCourant.id;
+  listesRapport = {
+    niveaux: await db.niveaux.where("projetId").equals(projetId).sortBy("ordre"),
+    locaux: await db.locaux.where("projetId").equals(projetId).sortBy("ordre"),
+    lots: await lotsDuProjet(),
+    ce: await ceDuProjet()
+  };
+  remplirListe(champNiveauRapport, listesRapport.niveaux, (n) => n.nom, champNiveauRapport.value);
+  remplirLocauxRapport(champLocalRapport.value);
+  remplirListe(champLotRapport, listesRapport.lots, (l) => `${l.numero} · ${l.nom}`, champLotRapport.value);
+  remplirChapitresRapport(champChapitreRapport.value);
+  ficheRapport.returnValue = "";
+  ficheRapport.showModal();
+}
+
+// Comme dans la fiche : local réduit au niveau, chapitre réduit au lot (sans choix d'office :
+// un lot seul veut dire « tout le lot »)
+function remplirLocauxRapport(localId) {
+  const niveauId = champNiveauRapport.value;
+  remplirListe(champLocalRapport, listesRapport.locaux.filter((l) => l.niveauId === niveauId), libelleLocal, localId);
+  champLocalRapport.disabled = !niveauId;
+}
+
+function remplirChapitresRapport(ceId) {
+  const lotId = champLotRapport.value;
+  remplirListe(champChapitreRapport, listesRapport.ce.filter((c) => c.lotId === lotId), (c) => c.nom, ceId);
+  champChapitreRapport.disabled = !lotId;
+}
+
+champNiveauRapport.addEventListener("change", () => remplirLocauxRapport(null));
+champLotRapport.addEventListener("change", () => remplirChapitresRapport(null));
+
+ficheRapport.addEventListener("close", () => {
+  if (ficheRapport.returnValue !== "produire") return;
+  produireRapport({
+    seulementOuvertes: champStatutRapport.value === "ouvertes",
+    niveauId: champNiveauRapport.value || null,   // « — » = pas de filtre
+    localId: champLocalRapport.value || null,
+    lotId: champLotRapport.value || null,
+    ceId: champChapitreRapport.value || null,
+    photos: champPhotosRapport.value              // « liste », « fin » ou « sans »
+  });
+});
+
+async function produireRapport(filtres) {
+  if (rapportEnCours) return;
+  rapportEnCours = true;
+  el("bandeauTravail").hidden = false;
+  try {
+    const projetId = projetCourant.id;
+    const parId = (liste) => new Map(liste.map((e) => [e.id, e]));
+    const niveauDe = parId(listesRapport.niveaux);
+    const localDe = parId(listesRapport.locaux);
+    const lotDe = parId(listesRapport.lots);
+    const ceDe = parId(listesRapport.ce);
+
+    const choisies = (await db.remarques.where("projetId").equals(projetId).toArray())
+      .filter((r) => (!filtres.seulementOuvertes || r.statut === "ouverte")
+        && (!filtres.niveauId || r.niveauId === filtres.niveauId)
+        && (!filtres.localId || r.localId === filtres.localId)
+        && (!filtres.lotId || r.lotId === filtres.lotId)
+        && (!filtres.ceId || r.ceId === filtres.ceId))
+      .sort((a, b) => a.numero - b.numero);
+    if (choisies.length === 0) {
+      alert("Aucune remarque ne correspond à ce choix.");
+      return;
+    }
+    const plans = (await db.plans.where("projetId").equals(projetId).sortBy("nom"))
+      .filter((p) => choisies.some((r) => r.planId === p.id));
+
+    // Photos des remarques choisies, dans l'ordre d'ajout
+    const photosDe = new Map();
+    if (filtres.photos !== "sans") {
+      const photos = await db.photos.where("projetId").equals(projetId).sortBy("ajouteeLe");
+      for (const photo of photos) {
+        if (!photosDe.has(photo.remarqueId)) photosDe.set(photo.remarqueId, []);
+        photosDe.get(photo.remarqueId).push(photo);
+      }
+    }
+
+    // Lieu (local, sinon niveau) et chapitre (CE, sinon lot) d'une remarque, pour la liste
+    const lieu = (r) => localDe.has(r.localId) ? libelleLocal(localDe.get(r.localId)) : niveauDe.get(r.niveauId)?.nom;
+    const chapitre = (r) => ceDe.has(r.ceId) ? ceDe.get(r.ceId).nom : lotDe.has(r.lotId) ? libelleLot(lotDe.get(r.lotId)) : null;
+
+    const doc = await PDFDocument.create();
+    const { default: fontkit } = await import(ADRESSE_FONTKIT);
+    doc.registerFontkit(fontkit);
+    const mise = {
+      doc,
+      // texte, texteGras, titre, etiquette : polices intégrées au PDF (seulement les lettres utilisées)
+      ...Object.fromEntries(await Promise.all(Object.entries(POLICES_RAPPORT).map(async ([role, chemin]) =>
+        [role, await doc.embedFont(await (await fetch(chemin)).arrayBuffer(), { subset: true })]))),
+      page: null,
+      y: 0,
+      titreSuite: null   // titre répété en haut des pages suivantes d'une liste
+    };
+
+    pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe });
+
+    for (const plan of plans) {
+      const duPlan = choisies.filter((r) => r.planId === plan.id);
+      const indice = plan.nombreVersions ? " · indice " + lettreIndice(plan.nombreVersions + 1) : "";
+      await pageDuPlan(mise, plan, plan.nom + indice, duPlan);
+
+      // Liste des remarques du plan, sur des pages A4 en hauteur
+      nouvellePageRapport(mise);
+      ecrireTitre(mise, plan.nom + indice + " : remarques", 16, true);
+      mise.titreSuite = plan.nom + indice + " : remarques (suite)";
+      for (const r of duPlan) {
+        await ligneRemarque(mise, r, lieu(r), chapitre(r), filtres.photos === "liste" ? photosDe.get(r.id) || [] : []);
+      }
+      mise.titreSuite = null;
+    }
+
+    if (filtres.photos === "fin" && choisies.some((r) => photosDe.has(r.id))) {
+      nouvellePageRapport(mise);
+      ecrireTitre(mise, "Photos", 16, true);
+      mise.titreSuite = "Photos (suite)";
+      for (const r of choisies) {
+        if (photosDe.has(r.id)) await photosEnFin(mise, r, lieu(r), photosDe.get(r.id));
+      }
+    }
+
+    piedsDePage(mise);
+    const resultat = await doc.save();
+    telecharger(new Blob([resultat], { type: "application/pdf" }),
+      nomDeFichier(`${projetCourant.nom} - rapport ${aujourdhui()}`) + ".pdf");
+  } catch (erreur) {
+    alert("Impossible de produire le rapport : " + erreur.message);
+  } finally {
+    rapportEnCours = false;
+    el("bandeauTravail").hidden = true;
+  }
+}
+
+// ----- Page de garde : projet, date, choix des remarques, nombres, entreprises concernées -----
+function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }) {
+  nouvellePageRapport(mise);
+  ecrireTitre(mise, "Rapport de chantier", 26, true);
+
+  // Comme la fiche : étiquette noire à gauche, valeur à droite
+  const ouvertes = choisies.filter((r) => r.statut === "ouverte").length;
+  const levees = choisies.length - ouvertes;
+  grilleRapport(mise, [
+    ["projet", [{ texte: projetCourant.nom, gras: true }]],
+    ["date", [{ texte: formaterDate(aujourdhui()) }]],
+    ["remarques", [{ texte: filtres.seulementOuvertes ? "Ouvertes seulement" : "Toutes (ouvertes et levées)" }]],
+    filtres.niveauId && ["niveau", [{ texte: niveauDe.get(filtres.niveauId).nom }]],
+    filtres.localId && ["local", [{ texte: libelleLocal(localDe.get(filtres.localId)) }]],
+    filtres.lotId && ["lot", [{ texte: libelleLot(lotDe.get(filtres.lotId)).replace(/^lot /, "") }]],
+    filtres.ceId && ["chapitre", [{ texte: ceDe.get(filtres.ceId).nom }]],
+    ["nombre", [{ texte: `${choisies.length} remarque${choisies.length > 1 ? "s" : ""} : ` +
+      `${ouvertes} ouverte${ouvertes > 1 ? "s" : ""}, ${levees} levée${levees > 1 ? "s" : ""}` }]]
+  ].filter(Boolean));
+
+  // Légende des pastilles, sur une ligne
+  placeRapport(mise, 20);
+  let x = MARGE;
+  for (const [statut, texte] of [["ouverte", "ouverte"], ["levee", "levée"]]) {
+    dessinerPastillePdf(mise.page, mise.texteGras, x + PASTILLE_RAPPORT / 2, mise.y - 8, PASTILLE_RAPPORT, { statut, numero: "" });
+    ecrireTexte(mise, texte, x + PASTILLE_RAPPORT + 6, mise.y - 11.5, 10.5);
+    x += PASTILLE_RAPPORT + 6 + mise.texte.widthOfTextAtSize(texte, 10.5) + 24;
+  }
+  mise.y -= 48;
+
+  // Entreprises concernées : celle de chaque lot des remarques, et le sous-traitant de chaque CE
+  ecrireTitre(mise, "Entreprises concernées", 16, true);
+  const lotsConcernes = [...lotDe.values()].filter((l) => choisies.some((r) => r.lotId === l.id));
+  if (lotsConcernes.length === 0) ecrireLignes(mise, "Aucune remarque n'est liée à un lot.", { couleur: "--encre-douce" });
+  const intervenant = (e) => e.entreprise + (e.courriel ? " · " + e.courriel : "");
+  grilleRapport(mise, lotsConcernes.map((lot) => {
+    const lignes = [
+      { texte: lot.nom, gras: true },
+      lot.entreprise ? { texte: intervenant(lot) } : { texte: "entreprise non renseignée", doux: true }
+    ];
+    for (const ce of [...ceDe.values()].filter((c) => c.lotId === lot.id && c.entreprise)) {
+      if (choisies.some((r) => r.ceId === ce.id)) lignes.push({ texte: `${ce.nom}, sous-traitant : ${intervenant(ce)}` });
+    }
+    return ["lot " + lot.numero, lignes];
+  }));
+  const sansLot = choisies.filter((r) => !lotDe.has(r.lotId)).length;
+  if (sansLot > 0 && lotsConcernes.length > 0) {
+    ecrireLignes(mise, `${sansLot} remarque${sansLot > 1 ? "s" : ""} sans lot`, { couleur: "--encre-douce" });
+  }
+}
+
+// ----- Page d'un plan : le plan entier (vectoriel), avec les pastilles des remarques choisies -----
+// Page A4 en largeur ou en hauteur selon le plan.
+async function pageDuPlan(mise, plan, titre, duPlan) {
+  const octets = await plan.fichier.arrayBuffer();
+  // Copie des octets pour pdf.js (voir exporterPlanAnnote)
+  const pagePdfjs = await (await pdfjsLib.getDocument({ data: octets.slice(0) }).promise).getPage(plan.page);
+  const vue = pagePdfjs.getViewport({ scale: 1 });
+
+  nouvellePageRapport(mise, vue.width > vue.height ? [A4[1], A4[0]] : A4);
+  ecrireTitre(mise, titre, 16, true);
+  const largeurPage = mise.page.getWidth();
+  const largeurZone = largeurPage - 2 * MARGE;
+  const hauteurZone = mise.y - MARGE - HAUTEUR_PIED;
+  const echelle = Math.min(largeurZone / vue.width, hauteurZone / vue.height);
+  const largeur = vue.width * echelle;
+  const hauteur = vue.height * echelle;
+  const x = MARGE + (largeurZone - largeur) / 2;
+  const y = MARGE + HAUTEUR_PIED + (hauteurZone - hauteur) / 2;
+
+  try {
+    // Page du plan reprise telle quelle (cadre vu par pdf.js), tournée comme à l'écran
+    const source = await PDFDocument.load(octets);
+    const [gauche, bas, droite, haut] = pagePdfjs.view;
+    const integree = await mise.doc.embedPage(source.getPage(plan.page - 1), { left: gauche, bottom: bas, right: droite, top: haut });
+    const l = integree.width * echelle;    // taille avant rotation
+    const h = integree.height * echelle;
+    // La rotation se fait autour du point d'ancrage : on le choisit pour que la page tournée tombe dans la zone
+    const ancre = { 0: [x, y], 90: [x, y + l], 180: [x + l, y + h], 270: [x + h, y] }[vue.rotation];
+    mise.page.drawPage(integree, { x: ancre[0], y: ancre[1], xScale: echelle, yScale: echelle, rotate: degrees(-vue.rotation) });
+  } catch {
+    // PDF protégé (chiffré) : pdf-lib ne peut pas le reprendre ; le plan est mis en image (moins net)
+    const finesse = 2400 / Math.max(vue.width, vue.height);
+    const vueImage = pagePdfjs.getViewport({ scale: finesse });
+    const toile = document.createElement("canvas");
+    toile.width = Math.round(vueImage.width);
+    toile.height = Math.round(vueImage.height);
+    const ctx = toile.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, toile.width, toile.height);
+    await pagePdfjs.render({ canvasContext: ctx, viewport: vueImage }).promise;
+    const image = await mise.doc.embedJpg(await octetsJpeg(toile));
+    mise.page.drawImage(image, { x, y, width: largeur, height: hauteur });
+  }
+
+  for (const r of duPlan) {
+    dessinerPastillePdf(mise.page, mise.texteGras, x + r.x * largeur, y + (1 - r.y) * hauteur, PASTILLE_RAPPORT, r);
+  }
+}
+
+// ----- Une remarque de la liste : pastille, lieu · chapitre, statut · date, description, photos -----
+async function ligneRemarque(mise, r, lieu, chapitre, photos) {
+  const largeurPage = mise.page.getWidth();
+  const xTexte = MARGE + PASTILLE_RAPPORT + 8;
+  const largeurTexte = largeurPage - MARGE - xTexte;
+  const lignes = couperLignes(r.texte || "", mise.texte, 10.5, largeurTexte);
+
+  placeRapport(mise, 17 + lignes.length * 13.5 + 6);
+  const haut = mise.y;
+  dessinerPastillePdf(mise.page, mise.texteGras, MARGE + PASTILLE_RAPPORT / 2, haut - 2 - PASTILLE_RAPPORT / 2, PASTILLE_RAPPORT, r);
+  const droite = (r.statut === "levee" ? "levée" : "ouverte") + (r.date ? " · " + formaterDate(r.date) : "");
+  const largeurDroite = mise.etiquette.widthOfTextAtSize(droite, 9.5);
+  const entete = [lieu, chapitre].filter(Boolean).join(" · ") || "—";
+  const enteteCourt = couperLignes(entete, mise.texteGras, 10.5, largeurTexte - largeurDroite - 12)[0] || "";
+  ecrireTexte(mise, enteteCourt, xTexte, haut - 10.5, 10.5, mise.texteGras);
+  ecrireTexte(mise, droite, largeurPage - MARGE - largeurDroite, haut - 10.5, 9.5, mise.etiquette, "--encre-douce");
+  mise.y = haut - 17;
+  for (const ligne of lignes) {
+    ecrireTexte(mise, ligne, xTexte, mise.y - 10, 10.5);
+    mise.y -= 13.5;
+  }
+
+  // Vignettes des photos annotées, à la suite, sur autant de rangées que nécessaire
+  let x = xTexte;
+  let rangeeOuverte = false;
+  for (const photo of photos) {
+    const largeur = HAUTEUR_VIGNETTE_RAPPORT * photo.largeur / photo.hauteur;
+    if (rangeeOuverte && x + largeur > largeurPage - MARGE) {
+      mise.y -= HAUTEUR_VIGNETTE_RAPPORT + ECART;
+      rangeeOuverte = false;
+      x = xTexte;
+    }
+    if (!rangeeOuverte) {
+      mise.y -= 4;
+      placeRapport(mise, HAUTEUR_VIGNETTE_RAPPORT);
+      rangeeOuverte = true;
+    }
+    const image = await imagePhotoPdf(mise.doc, photo, 700);
+    mise.page.drawImage(image, { x, y: mise.y - HAUTEUR_VIGNETTE_RAPPORT, width: largeur, height: HAUTEUR_VIGNETTE_RAPPORT });
+    x += largeur + ECART;
+  }
+  if (rangeeOuverte) mise.y -= HAUTEUR_VIGNETTE_RAPPORT;
+
+  // Trait de séparation
+  mise.y -= 6;
+  mise.page.drawLine({
+    start: { x: MARGE, y: mise.y }, end: { x: largeurPage - MARGE, y: mise.y },
+    thickness: 0.5, color: couleurPdf("--trait")
+  });
+  mise.y -= 6;
+}
+
+// ----- Photos à la fin du rapport : n° de la remarque et local, puis ses photos, deux par ligne -----
+async function photosEnFin(mise, r, lieu, photos) {
+  const largeurPage = mise.page.getWidth();
+  const largeurCase = (largeurPage - 2 * MARGE - ECART) / 2;
+  const taille = (photo) => {
+    let largeur = largeurCase;
+    let hauteur = largeur * photo.hauteur / photo.largeur;
+    if (hauteur > HAUTEUR_PHOTO_FIN_MAX) {   // photo en hauteur : on limite la hauteur
+      hauteur = HAUTEUR_PHOTO_FIN_MAX;
+      largeur = hauteur * photo.largeur / photo.hauteur;
+    }
+    return { largeur, hauteur };
+  };
+
+  for (let i = 0; i < photos.length; i += 2) {
+    const rangee = photos.slice(i, i + 2);
+    const hauteurRangee = Math.max(...rangee.map((p) => taille(p).hauteur));
+    // Le titre de la remarque reste avec sa première rangée de photos
+    placeRapport(mise, (i === 0 ? 22 : 0) + hauteurRangee);
+    if (i === 0) {
+      dessinerPastillePdf(mise.page, mise.texteGras, MARGE + PASTILLE_RAPPORT / 2, mise.y - 2 - PASTILLE_RAPPORT / 2, PASTILLE_RAPPORT, r);
+      ecrireTexte(mise, `n° ${r.numero}` + (lieu ? " · " + lieu : ""), MARGE + PASTILLE_RAPPORT + 8, mise.y - 10.5, 10.5, mise.texteGras);
+      mise.y -= 22;
+    }
+    let x = MARGE;
+    for (const photo of rangee) {
+      const { largeur, hauteur } = taille(photo);
+      const image = await imagePhotoPdf(mise.doc, photo, 1400);
+      mise.page.drawImage(image, { x, y: mise.y - hauteur, width: largeur, height: hauteur });
+      x += largeurCase + ECART;
+    }
+    mise.y -= hauteurRangee + ECART;
+  }
+  mise.y -= 12;
+}
+
+// ----- Outils de mise en page du rapport -----
+function nouvellePageRapport(mise, format = A4) {
+  mise.page = mise.doc.addPage(format);
+  mise.y = format[1] - MARGE;
+  if (mise.titreSuite) ecrireTitre(mise, mise.titreSuite, 11);
+}
+
+// Passe à une nouvelle page si la hauteur demandée ne tient plus au-dessus du pied de page
+function placeRapport(mise, hauteur) {
+  if (mise.y - hauteur < MARGE + HAUTEUR_PIED) nouvellePageRapport(mise);
+}
+
+// Titre en Dosis ; « avecTrait » : grand trait noir dessous, comme l'en-tête des écrans et des fiches
+function ecrireTitre(mise, texte, taille, avecTrait = false) {
+  const largeurPage = mise.page.getWidth();
+  for (const ligne of couperLignes(texte, mise.titre, taille, largeurPage - 2 * MARGE)) {
+    placeRapport(mise, taille * 1.3 + (avecTrait ? EPAISSEUR_SEPARATION + 8 : 0));
+    ecrireTexte(mise, ligne, MARGE, mise.y - taille, taille, mise.titre);
+    mise.y -= taille * 1.3;
+  }
+  if (avecTrait) {
+    mise.y -= 4;
+    mise.page.drawRectangle({
+      x: MARGE, y: mise.y - EPAISSEUR_SEPARATION,
+      width: largeurPage - 2 * MARGE, height: EPAISSEUR_SEPARATION, color: couleurPdf("--encre")
+    });
+    mise.y -= EPAISSEUR_SEPARATION + 14;
+  } else {
+    mise.y -= taille * 0.4;
+  }
+}
+
+// Étiquette de la charte, bord haut en « yHaut » : pastille noire, texte blanc en Dosis, minuscules
+function dessinerEtiquette(mise, texte, x, yHaut, largeur) {
+  const rayon = HAUTEUR_ETIQUETTE / 2;
+  const fond = couleurPdf("--bouton-fond");
+  mise.page.drawRectangle({ x: x + rayon, y: yHaut - HAUTEUR_ETIQUETTE, width: largeur - HAUTEUR_ETIQUETTE, height: HAUTEUR_ETIQUETTE, color: fond });
+  mise.page.drawCircle({ x: x + rayon, y: yHaut - rayon, size: rayon, color: fond });
+  mise.page.drawCircle({ x: x + largeur - rayon, y: yHaut - rayon, size: rayon, color: fond });
+  const largeurTexte = mise.etiquette.widthOfTextAtSize(texte, 9.5);
+  ecrireTexte(mise, texte, x + (largeur - largeurTexte) / 2, yHaut - rayon - 3.2, 9.5, mise.etiquette, "--bouton-texte");
+}
+
+// Grille comme dans la fiche : [étiquette, lignes] ; étiquettes à la largeur de la plus longue, valeurs à
+// droite (chaque ligne : { texte, gras, doux }), coupées à la largeur restante
+function grilleRapport(mise, rangees) {
+  const largeurEtiquettes = Math.max(0, ...rangees.map(([etiquette]) =>
+    mise.etiquette.widthOfTextAtSize(etiquette, 9.5) + 2 * 9));
+  const xValeur = MARGE + largeurEtiquettes + 10;
+  const largeurValeur = mise.page.getWidth() - MARGE - xValeur;
+  for (const [etiquette, lignes] of rangees) {
+    const coupees = lignes.flatMap(({ texte, gras, doux }) =>
+      couperLignes(texte, gras ? mise.texteGras : mise.texte, 10.5, largeurValeur)
+        .map((t) => ({ t, police: gras ? mise.texteGras : mise.texte, couleur: doux ? "--encre-douce" : "--encre" })));
+    placeRapport(mise, Math.max(HAUTEUR_ETIQUETTE, coupees.length * 13.5) + 8);
+    dessinerEtiquette(mise, etiquette, MARGE, mise.y, largeurEtiquettes);
+    let y = mise.y;
+    for (const { t, police, couleur } of coupees) {
+      ecrireTexte(mise, t, xValeur, y - 11.8, 10.5, police, couleur);
+      y -= 13.5;
+    }
+    mise.y -= Math.max(HAUTEUR_ETIQUETTE, coupees.length * 13.5) + 8;
+  }
+}
+
+// Paragraphe coupé à la largeur de la page
+function ecrireLignes(mise, texte, { police = mise.texte, retrait = 0, couleur = "--encre" } = {}) {
+  const largeurPage = mise.page.getWidth();
+  for (const ligne of couperLignes(texte, police, 10.5, largeurPage - 2 * MARGE - retrait)) {
+    placeRapport(mise, 13.5);
+    ecrireTexte(mise, ligne, MARGE + retrait, mise.y - 10.5, 10.5, police, couleur);
+    mise.y -= 13.5;
+  }
+}
+
+function ecrireTexte(mise, texte, x, y, taille, police = mise.texte, couleur = "--encre") {
+  mise.page.drawText(texteLisible(texte, police), { x, y, size: taille, font: police, color: couleurPdf(couleur) });
+}
+
+// Pied de chaque page, en Dosis : projet et date du rapport à gauche, n° de page à droite
+function piedsDePage(mise) {
+  const pages = mise.doc.getPages();
+  const police = mise.etiquette;
+  const gauche = texteLisible(`${projetCourant.nom} · rapport du ${formaterDate(aujourdhui())}`, police);
+  pages.forEach((page, i) => {
+    const largeurPage = page.getWidth();
+    const droite = `page ${i + 1} / ${pages.length}`;
+    const options = { y: MARGE, size: 8.5, font: police, color: couleurPdf("--encre-douce") };
+    page.drawText(gauche, { ...options, x: MARGE });
+    page.drawText(droite, { ...options, x: largeurPage - MARGE - police.widthOfTextAtSize(droite, 8.5) });
+  });
+}
+
+// Une police ne connaît qu'un jeu de caractères (ici l'alphabet latin, accents français compris) :
+// un autre caractère (émoji, flèche…) est remplacé par « ? » au lieu de tout bloquer
+const caracteresConnus = new Map();
+function texteLisible(texte, police) {
+  if (!caracteresConnus.has(police)) caracteresConnus.set(police, new Set(police.getCharacterSet()));
+  const connus = caracteresConnus.get(police);
+  return [...String(texte).replace(/[\t  ]/g, " ")]
+    .map((c) => connus.has(c.codePointAt(0)) ? c : "?")
+    .join("");
+}
+
+// Coupe un texte en lignes qui tiennent dans la largeur ; garde les retours à la ligne saisis.
+// Un mot plus long que la largeur est coupé où il faut.
+function couperLignes(texte, police, taille, largeur) {
+  const mesure = (t) => police.widthOfTextAtSize(texteLisible(t, police), taille);
+  const lignes = [];
+  for (const paragraphe of String(texte).split(/\r?\n/)) {
+    let ligne = "";
+    for (let mot of paragraphe.split(" ")) {
+      while (mesure(mot) > largeur) {   // mot trop long : on en met le plus possible sur une ligne
+        if (ligne) { lignes.push(ligne); ligne = ""; }
+        let n = mot.length - 1;
+        while (n > 1 && mesure(mot.slice(0, n)) > largeur) n--;
+        lignes.push(mot.slice(0, n));
+        mot = mot.slice(n);
+      }
+      const essai = ligne ? ligne + " " + mot : mot;
+      if (mesure(essai) > largeur) {
+        lignes.push(ligne);
+        ligne = mot;
+      } else {
+        ligne = essai;
+      }
+    }
+    lignes.push(ligne);
+  }
+  return lignes;
+}
+
+// Photo avec ses traits, en JPEG pour le PDF ; « cote » : plus grand côté, en pixels
+async function imagePhotoPdf(doc, photo, cote) {
+  const echelle = Math.min(1, cote / Math.max(photo.largeur, photo.hauteur));
+  const toile = document.createElement("canvas");
+  toile.width = Math.round(photo.largeur * echelle);
+  toile.height = Math.round(photo.hauteur * echelle);
+  const ctx = toile.getContext("2d");
+  ctx.drawImage(await imageDe(photo), 0, 0, toile.width, toile.height);
+  for (const trait of photo.traits) dessinerTrait(ctx, trait, toile.width, toile.height);
+  return doc.embedJpg(await octetsJpeg(toile));
+}
+
+async function octetsJpeg(toile) {
+  const blob = await new Promise((resolu) => toile.toBlob(resolu, "image/jpeg", PHOTO_QUALITE));
+  return blob.arrayBuffer();
 }
 
 // ===================================================================
