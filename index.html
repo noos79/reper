@@ -5,18 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>RepeR</title>
   <!-- Logo dans l'onglet du navigateur -->
-  <link rel="icon" href="icones/reper-logo-B4.svg" type="image/svg+xml">
+  <link rel="icon" href="icones/reper-logo.svg" type="image/svg+xml">
   <!-- Application installable : nom, icônes, ouverture en plein écran -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#FFFFFF">
-  <link rel="stylesheet" href="css/charte.css?v=38">
-  <link rel="stylesheet" href="css/style.css?v=38">
+  <link rel="stylesheet" href="css/charte.css?v=42">
+  <link rel="stylesheet" href="css/style.css?v=42">
 </head>
 <body>
 
   <!-- Écran 1 : liste des projets -->
   <section id="ecranProjets" class="ecran">
     <header>
+      <!-- Logo à la place de la flèche de retour des autres écrans (même place, même hauteur) -->
+      <img src="icones/reper-logo.svg" class="logoEntete" alt="RepeR">
       <h1>Projets</h1>
       <div class="actions">
         <!-- Visible seulement quand Chrome permet d'installer l'application -->
@@ -29,6 +31,8 @@
       </div>
     </header>
     <ul id="listeProjets" class="liste"></ul>
+    <!-- Image d'un projet (page de garde du rapport), choisie par l'action « image » -->
+    <input type="file" id="choixImageProjet" accept="image/*" hidden>
   </section>
 
   <!-- Écran 2 : un projet et ses plans -->
@@ -247,6 +251,22 @@
         <label><span class="etiquette">chapitre</span>
           <select id="champChapitreRapport"></select>
         </label>
+        <!-- Ordre des listes : les remarques jamais rapportées d'abord, puis les autres en rappel
+             (sans photos) ; ou toutes ensemble -->
+        <label><span class="etiquette">ordre</span>
+          <select id="champOrdreRapport">
+            <option value="nouvelles">Nouvelles d'abord, puis rappel</option>
+            <option value="numero">Toutes ensemble</option>
+          </select>
+        </label>
+        <!-- Rapport général : remarques de chaque plan par n°, ou regroupées par local (niveau, puis
+             ordre de la liste des locaux). Sans objet pour le rapport par local. -->
+        <label><span class="etiquette">tri</span>
+          <select id="champTriRapport">
+            <option value="numero">Par n°</option>
+            <option value="local">Par local</option>
+          </select>
+        </label>
         <label><span class="etiquette">photos</span>
           <select id="champPhotosRapport">
             <option value="liste">Dans la liste</option>
@@ -255,6 +275,11 @@
           </select>
         </label>
       </div>
+      <!-- Dernier rapport produit, qu'on peut annuler (rapport d'essai) -->
+      <p id="dernierRapport" class="dernierRapport" hidden>
+        <span id="texteDernierRapport"></span>
+        <button type="button" id="annulerDernierRapport" class="actionElement">annuler ce rapport</button>
+      </p>
       <div class="boutonsFiche">
         <button value="produire" class="principal">produire le&nbsp;<span class="sigle">PDF</span></button>
         <button value="annuler" formnovalidate aria-label="Annuler" title="Annuler"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -313,6 +338,6 @@
     <button type="button" id="recharger" class="bouton">recharger</button>
   </div>
 
-  <script type="module" src="js/app.js?v=38"></script>
+  <script type="module" src="js/app.js?v=42"></script>
 </body>
 </html>

@@ -68,7 +68,8 @@ signalée si elle alourdit la saisie.
 Base IndexedDB `suiviChantier`, via Dexie :
 
 ```
-projets:   "id, nom"            // id, nom, creeLe, dernierNumero
+projets:   "id, nom"            // id, nom, creeLe, dernierNumero, dernierRapport (n° du dernier rapport produit),
+                                // image (Blob JPEG, 1600 px au plus), imageLargeur, imageHauteur (facultatifs)
 plans:     "id, projetId, nom"  // id, projetId, nom, fichier (Blob PDF), page, niveauId, lotId (facultatifs),
                                 // nombreVersions (anciennes versions déjà créées, compteur des indices)
 remarques: "id, planId, projetId"
@@ -89,11 +90,14 @@ contours:  "id, projetId, planId, localId"            (depuis la version 6 du sc
 versionsPlan: "id, projetId, planId"                   (depuis la version 7 du schéma)
            // id, projetId, planId, rang (1, 2…), indice ("A", "B"…), fichier (Blob PDF), page,
            // remplaceLe (AAAA-MM-JJ), pastilles (liste de { numero, statut, x, y } au remplacement)
+rapports:  "id, projetId"                              (depuis la version 8 du schéma)
+           // id, projetId, numero (1, 2… par projet), date, type ("general" / "local"),
+           // remarques (identifiants des remarques que le rapport contenait)
 ```
 
 Décisions à respecter :
 - Toute modification de schéma passe par une **nouvelle version** (`db.version(3)`…), jamais en modifiant
-  une version existante : des appareils ont déjà des données. Version actuelle : **7** (la version 5 a
+  une version existante : des appareils ont déjà des données. Version actuelle : **8** (la version 5 a
   retiré le champ `entreprise` des remarques).
 - **Anciennes versions d'un plan** (indices) : « mettre à jour le PDF » garde le PDF actuel dans
   `versionsPlan`, avec l'indice suivant (`lettreIndice` : 1 → A… 26 → Z, 27 → AA) et une **copie des
@@ -156,11 +160,19 @@ Décisions à respecter :
 - `statut` : `"ouverte"` ou `"levee"`.
 - `date` : date de constat (AAAA-MM-JJ, date locale), remplie avec la date du jour.
 - Suppressions en cascade dans une **transaction** (jamais de remarques ni de photos orphelines).
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 7**, avec `niveaux`, `locaux`, `lots`,
-  `ce`, `contours` et `versions` ; remarques avec leurs liens) +
+- **Rapports produits** : chaque rapport produit (PDF téléchargé) est mémorisé dans `rapports` avec son
+  n° (compteur `dernierRapport` du projet, jamais réutilisé), sa date, son type et les remarques qu'il
+  contenait. Une remarque est « déjà rapportée » si elle figure dans au moins un rapport précédent ;
+  le rappel cite le **dernier** rapport qui la contenait. Une remarque supprimée peut rester citée dans un
+  ancien rapport : sans conséquence. **Annulation** (rapport d'essai) : la fenêtre « Rapport » affiche
+  le dernier rapport produit et « annuler ce rapport » ; seul le **dernier** s'annule (on peut répéter),
+  `dernierRapport` redescend et son n° est réutilisé ; le PDF déjà téléchargé reste sur l'appareil.
+- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 9**, avec `niveaux`, `locaux`, `lots`,
+  `ce`, `contours`, `versions` et `rapports` ; remarques avec leurs liens) +
   `plans/<id>.pdf` + `photos/<id>.jpg` + `versions/<id>.pdf`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
   3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import), 5 (sans contours), 6 (sans
-  anciennes versions) et 7. Un lien rempli qui ne
+  anciennes versions), 7 (sans rapports), 8 (sans image du projet) et 9. L'image du projet est rangée
+  dans `projet/image.jpg`, jamais dans `projet.json`. Un lien rempli qui ne
   mène nulle part refuse l'import. Les fonctions `tablesDuProjet` et `viderProjet` listent toutes les tables d'un projet : y ajouter
   chaque nouvelle table.
 - Les données sont **propres à chaque appareil** et à chaque adresse (Live Server et GitHub Pages ont des
@@ -169,7 +181,11 @@ Décisions à respecter :
 ## Interface
 
 Écrans (`<section class="ecran">`, un seul visible à la fois via `hidden`) :
-1. **Projets** : liste, création, suppression, export, import.
+1. **Projets** : logo RepeR à gauche du titre, à la place exacte du bouton « retour » des autres
+   écrans (classe `logoEntete`, même largeur et même hauteur, collé à gauche) ; liste, création,
+   suppression, export, import ; « image » : image du projet (réduite comme les photos), affichée en
+   vignette carrée devant le nom et en haut de la page de garde du rapport. Pas encore de moyen de
+   retirer une image (seulement la remplacer).
 2. **Projet** : liste des plans (indice actuel si le PDF a été remplacé, niveau et lot éventuels, nombre
    de remarques ouvertes), ajout d'un PDF, « modifier » (petite fenêtre `fichePlan` : niveau, lot,
    « mettre à jour le PDF »), « PDF » (plan annoté), suppression ; sous chaque plan, ses **anciennes
@@ -178,7 +194,18 @@ Décisions à respecter :
    - **Rapport** : fenêtre `ficheRapport` : « type » (général / par local), « remarques » (toutes /
      ouvertes seulement), niveau, local
      (réduit au niveau), lot, chapitre (réduit au lot, **sans** choix d'office : un lot seul = tout le
-     lot), « photos » (dans la liste / à la fin du rapport / sans photos) ; « — » = pas de filtre. Les
+     lot), « ordre » : **« Nouvelles d'abord, puis rappel »** (choix d'office) = dans chaque liste du
+     rapport (par plan, par local, sans local), d'abord les remarques jamais rapportées, par n° ; puis
+     les remarques déjà rapportées, groupées par dernier rapport qui les contenait (le plus récent
+     d'abord), chaque groupe précédé de la note « Les remarques suivantes ont fait l'objet du rapport
+     n° X du JJ/MM/AAAA et sont reprises à titre de rappel. », par n° ; les rappels n'ont **pas de
+     photos** (ni dans la liste ni à la fin) ; ou **« Toutes ensemble »** (sans note, toutes les photos).
+     « tri » (rapport général seulement, grisé pour le rapport par local) : par n°, ou **par local**
+     (niveau, puis ordre de la liste des locaux, puis n° ; sans local après les locaux de son niveau,
+     sans niveau à la fin), appliqué dans chaque groupe « nouvelles » / « rappel ».
+     « photos » (dans la liste / à la fin du rapport / sans photos) ; « — » = pas de filtre. Page de
+     garde : « rapport n° X », l'ordre et le tri choisis, et « dont N nouvelles » à partir du 2e rapport. Fichier
+     « projet - rapport X AAAA-MM-JJ.pdf ». Les
      choix restent ceux du rapport précédent. « produire le PDF » ; bandeau `bandeauTravail` pendant la
      préparation.
    - **Locaux** (`ecranLocaux`) : locaux regroupés par niveau (titre du niveau en étiquette), « importer CSV ».
@@ -297,8 +324,11 @@ Les **valeurs** sont dans `css/charte.css` (variables CSS) ; `css/style.css` les
 - **Fond derrière le plan** : quadrillage de petites croix grises à trait très fin (« + »), comme sur les documents AASA
   (variable `--motif-fond`). Le plan reste sur fond blanc par-dessus.
 - **Logo AASA** : pas dans le dépôt (public).
-- **Logo de l'application RepeR** : `icones/reper-logo-B4.svg` (original, casque orange, crayon et
-  longue-vue sur fond gris clair `#EDEDED`), aussi icône d'onglet. Icônes tirées du SVG par Chrome :
+- **Logo de l'application RepeR** : `icones/reper-logo.svg` (27/10/2026 : disque bleu-gris `#464863`
+  avec un reflet blanc, dans un anneau turquoise `#43B9BA` ; **sans fond ni lettre**, l'espace entre
+  l'anneau et le disque est transparent ; cadrage centré sur le cercle avec 4 % de marge), aussi
+  icône d'onglet, logo de l'écran Projets et (en PNG) du pied de page des rapports. Icônes tirées du
+  SVG par Edge (icône adaptative sur fond **blanc**) :
   `icone-192.png`, `icone-512.png` (logo tel quel, « any ») et `icone-512-adaptative.png` (« maskable » :
   fond plein, logo réduit à 80 % au centre, pour la découpe ronde ou arrondie d'Android). Le logo
   change → refaire les trois PNG.
@@ -383,25 +413,33 @@ Fait :
 À faire, dans cet ordre :
 14. Rapports PDF, en deux morceaux (décisions du 26/10/2026) :
     - **14a (fait)** : rapport général (`produireRapport`), pdf-lib, pages **A4**, polices de la charte (un
-      caractère inconnu des polices, émoji ou flèche par exemple → « ? », `texteLisible`). Page de garde : projet,
+      caractère inconnu des polices, émoji ou flèche par exemple → « ? », `texteLisible`). Page de garde :
+      le **tiers supérieur** est réservé à l'image du projet (centrée, dans ses proportions ; vide sans
+      image), les informations commencent en dessous ; projet,
       date, choix des remarques, nombres (ouvertes, levées), légende des pastilles, **entreprises
       concernées** (entreprise de chaque lot des remarques, avec son adresse ; sous-traitant d'un CE
       seulement s'il a des remarques ; nombre de remarques sans lot). Puis, pour chaque plan qui a des
-      remarques choisies (par nom) : une page du plan entier (A4 en largeur ou en hauteur selon le plan),
+      remarques choisies (par nom) : une page du plan entier, **toujours en A4 portrait** (titre et pied
+      de page à l'endroit) ; un plan plus large que haut est **tourné d'un quart de tour vers la gauche**
+      (son haut à gauche, on le lit en tournant la feuille vers la droite ; `dessinerVuePlan(…, 90)`, n°
+      des pastilles tournés avec lui),
       **vectoriel** (page reprise avec `embedPage`, cadre et rotation lus par pdf.js), pastilles de
       `PASTILLE_RAPPORT` (4,5 mm) ; si pdf-lib ne peut pas lire le PDF (chiffré), le plan est mis en image.
       **Aspect des fiches** : titres en Dosis 600 avec le grand trait noir dessous (`--trait-separation`),
       page de garde en grille comme la fiche (étiquettes en pastille noire, texte blanc en Dosis 400,
       valeurs en Roboto Condensed), texte en Roboto Condensed 400 et 600, numéros des pastilles en Roboto
       Condensed 600, « statut · date » et pied de page en Dosis. Couleurs lues dans `charte.css`.
-      Ensuite la liste des remarques du plan, une ligne par remarque, par n° : pastille, « local · chapitre »
-      (local, sinon niveau ; CE, sinon lot), « statut · date » à droite, description, et selon le choix
+      Ensuite la liste des remarques du plan, une ligne par remarque : pastille, puis **deux colonnes
+      alignées** : lieu en gras (local, sinon niveau) et chapitre (CE, sinon lot), chacune sur une
+      moitié de la place (largeur réservée à droite = « ouverte · 00/00/0000 », pour que la colonne ne
+      bouge pas), « statut · date » à droite, description, et selon le choix
       les **vignettes des photos annotées** (30 mm de haut). Photos « à la fin du rapport » : section
       « Photos », par remarque (pastille, n°, local) puis ses photos, deux par ligne. Pied de page :
-      projet, date du rapport, « page X / N ». Fichier « projet - rapport AAAA-MM-JJ.pdf ». Le plan annoté
+      projet et date du rapport à gauche (coupés avant le logo), **logo RepeR au centre**
+      (`LOGO_RAPPORT` = `icone-512.png`, 7 mm), « page X / N » à droite. Fichier « projet - rapport X AAAA-MM-JJ.pdf » (X = n° du rapport). Le plan annoté
       seul (étape 13) garde Helvetica.
     - **14b (fait)** : rapport **par local** (même fenêtre, « type » = par local ; mêmes filtres et
-      mêmes choix de photos ; fichier « projet - rapport par local AAAA-MM-JJ.pdf »). Après la page de
+      mêmes choix de photos ; fichier « projet - rapport X par local AAAA-MM-JJ.pdf »). Après la page de
       garde, les locaux qui ont des remarques choisies, par niveau puis dans l'ordre de la liste
       (`sectionLocal`) : titre « niveau · n° · nom » avec le grand trait, puis pour chaque plan où le
       local a des remarques, le nom du plan et une **vue recadrée** (`zoneAutour`) sur son contour et ses

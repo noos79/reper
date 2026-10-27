@@ -459,6 +459,17 @@ header .bouton { white-space: nowrap; }
   touch-action: none;   /* le doigt dessine au lieu de faire défiler ou zoomer */
 }
 
+/* Logo de l'écran Projets : occupe exactement la place du bouton « retour » des autres écrans
+   (bouton = 8 px de marge intérieure + flèche de 20 px + 8 px, bordure de 1 px ; 16 px de côté),
+   pour que le titre « Projets » commence au même endroit que les autres titres */
+.logoEntete {
+  flex-shrink: 0;
+  width: calc(16px + 20px + 16px + 2px);
+  height: calc(8px + 20px + 8px + 2px);
+  object-fit: contain;
+  object-position: left center;   /* collé à gauche, comme le bouton */
+}
+
 /* Flèche de retour dessinée (plus grasse et plus lisible que le caractère « ← ») */
 /* Mêmes traits pour les icônes des boutons de la fiche (disquette, croix) */
 .fleche,
@@ -556,6 +567,16 @@ header h1 {
   cursor: pointer;
 }
 
+/* Image d'un projet, en vignette devant son nom (écran Projets) */
+.vignetteProjet {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;   /* recadrée en carré */
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 /* ===== Écran Locaux ===== */
 .liste li.titreNiveau {
   border: none;
@@ -618,6 +639,17 @@ header h1 {
   flex-shrink: 0;
   accent-color: var(--encre);   /* case cochée en noir, comme la charte */
 }
+
+/* Fenêtre « rapport » : dernier rapport produit, en gris, avec l'action « annuler ce rapport » */
+.dernierRapport {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: var(--encre-douce);
+}
+
+.dernierRapport[hidden] { display: none; }
+
+.dernierRapport .actionElement { padding: 4px 0 4px 6px; }
 
 /* Fenêtre « mettre à jour le plan » : les sauts de ligne du texte sont respectés */
 #texteCadrage {

@@ -79,6 +79,20 @@ db.version(7).stores({
   contours: "id, projetId, planId, localId",
   versionsPlan: "id, projetId, planId"
 });
+// Version 8 : rapports déjà produits (n°, date, remarques qu'ils contenaient)
+db.version(8).stores({
+  projets: "id, nom",
+  plans: "id, projetId, nom",
+  remarques: "id, planId, projetId",
+  photos: "id, remarqueId, planId, projetId",
+  niveaux: "id, projetId",
+  locaux: "id, projetId, niveauId",
+  lots: "id, projetId",
+  ce: "id, projetId, lotId",
+  contours: "id, projetId, planId, localId",
+  versionsPlan: "id, projetId, planId",
+  rapports: "id, projetId"
+});
 
 // Demande à Android de ne pas effacer nos données s'il manque de place
 if (navigator.storage && navigator.storage.persist) {
@@ -109,8 +123,9 @@ const PASTILLE_PDF_PROPORTION = 0.01;   // 1 % du plus grand côté du plan
 const FORMAT_EXPORT = "suivi-chantier";
 // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE ;
 // 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise » ;
-// 6 : contours des locaux sur les plans ; 7 : anciennes versions des plans (indices)
-const VERSION_EXPORT = 7;
+// 6 : contours des locaux sur les plans ; 7 : anciennes versions des plans (indices) ;
+// 8 : rapports déjà produits ; 9 : image du projet
+const VERSION_EXPORT = 9;
 
 // Vérification simple d'une adresse électronique : « quelque chose@quelque chose.quelque chose »
 const ADRESSE_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -198,23 +213,63 @@ el("nouveauProjet").addEventListener("click", async () => {
   await afficherProjets();
 });
 
+let adressesVignettes = [];   // adresses des vignettes de projet affichées, libérées à chaque mise à jour
+
 async function afficherProjets() {
   const projets = await db.projets.orderBy("nom").toArray();
 
   listeProjets.replaceChildren();   // vide la liste avant de la reconstruire
+  for (const adresse of adressesVignettes) URL.revokeObjectURL(adresse);
+  adressesVignettes = [];
   if (projets.length === 0) {
     listeProjets.append(elementVide("Aucun projet. Crée le premier avec « Nouveau projet »."));
   }
   for (const projet of projets) {
-    listeProjets.append(elementListe(
+    const ligne = elementListe(
       projet.nom,
       "Créé le " + formaterDate(projet.creeLe),
       () => ouvrirProjet(projet),
-      [["Exporter", () => exporterProjet(projet)], ["Supprimer", () => supprimerProjet(projet)]]
-    ));
+      [["image", () => choisirImageProjet(projet)], ["Exporter", () => exporterProjet(projet)],
+        ["Supprimer", () => supprimerProjet(projet)]]
+    );
+    // Image du projet en vignette, devant son nom ; la toucher ouvre le projet
+    if (projet.image) {
+      const vignette = document.createElement("img");
+      vignette.className = "vignetteProjet";
+      vignette.alt = "";
+      vignette.src = URL.createObjectURL(projet.image);
+      adressesVignettes.push(vignette.src);
+      vignette.addEventListener("click", () => ouvrirProjet(projet));
+      ligne.prepend(vignette);
+    }
+    listeProjets.append(ligne);
   }
   afficherEcran("ecranProjets");
 }
+
+// ----- Image du projet : illustre la page de garde du rapport -----
+const choixImageProjet = el("choixImageProjet");
+let projetPourImage = null;
+
+function choisirImageProjet(projet) {
+  projetPourImage = projet;
+  choixImageProjet.click();
+}
+
+choixImageProjet.addEventListener("change", async () => {
+  const fichier = choixImageProjet.files[0];
+  choixImageProjet.value = "";
+  if (!fichier || !projetPourImage) return;
+  try {
+    // Réduite comme les photos des remarques (1600 px au plus, JPEG)
+    const { image, largeur, hauteur } = await reduirePhoto(fichier);
+    await db.projets.update(projetPourImage.id, { image, imageLargeur: largeur, imageHauteur: hauteur });
+  } catch (erreur) {
+    alert("Impossible d'utiliser cette image (format non pris en charge ?) : " + erreur.message);
+  }
+  projetPourImage = null;
+  await afficherProjets();
+});
 
 // ----- Export : un fichier .zip contenant projet.json, les PDF des plans et les photos -----
 async function exporterProjet(projet) {
@@ -229,13 +284,15 @@ async function exporterProjet(projet) {
     const ceProjet = await db.ce.where("projetId").equals(projet.id).toArray();
     const contoursProjet = await db.contours.where("projetId").equals(projet.id).toArray();
     const versionsProjet = await db.versionsPlan.where("projetId").equals(projet.id).toArray();
+    const rapportsProjet = await db.rapports.where("projetId").equals(projet.id).toArray();
 
     const zip = new JSZip();
     zip.file("projet.json", JSON.stringify({
       format: FORMAT_EXPORT,
       version: VERSION_EXPORT,
       exporteLe: aujourdhui(),
-      projet: projetAJour,
+      // Le projet sans son « image » : rangée à part, dans projet/image.jpg
+      projet: (({ image, ...reste }) => reste)(projetAJour),
       // Chaque plan sans son « fichier » : le PDF est rangé à part dans le dossier plans/
       plans: plans.map(({ fichier, ...reste }) => reste),
       remarques: remarquesProjet,
@@ -247,9 +304,11 @@ async function exporterProjet(projet) {
       ce: ceProjet,
       contours: contoursProjet,
       // Anciennes versions des plans, sans leur PDF : rangé à part dans le dossier versions/
-      versions: versionsProjet.map(({ fichier, ...reste }) => reste)
+      versions: versionsProjet.map(({ fichier, ...reste }) => reste),
+      rapports: rapportsProjet
     }, null, 2));
 
+    if (projetAJour.image) zip.file("projet/image.jpg", projetAJour.image);
     for (const plan of plans) {
       zip.file(`plans/${plan.id}.pdf`, plan.fichier);
     }
@@ -299,8 +358,8 @@ async function importerProjet(fichierZip) {
   }
   // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE),
   // 5 (remarques liées aux niveaux, locaux, lots et CE), 6 (avec contours des locaux),
-  // 7 (avec anciennes versions des plans)
-  if (![1, 2, 3, 4, 5, 6, 7].includes(donnees.version)) {
+  // 7 (avec anciennes versions des plans), 8 (avec rapports déjà produits), 9 (avec image du projet)
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(donnees.version)) {
     throw new Error(`version de format inconnue (${donnees.version}). Mets l'application à jour.`);
   }
   const { projet, plans, remarques: remarquesImportees } = donnees;
@@ -311,11 +370,12 @@ async function importerProjet(fichierZip) {
   const ceImportes = donnees.ce || [];
   const contoursImportes = donnees.contours || [];   // absents avant la version 6
   const versionsImportees = donnees.versions || [];  // absentes avant la version 7
+  const rapportsImportes = donnees.rapports || [];   // absents avant la version 8
   if (!projet || !projet.id || !Array.isArray(plans) || !Array.isArray(remarquesImportees)
       || !Array.isArray(photosImportees) || !Array.isArray(niveauxImportes)
       || !Array.isArray(locauxImportes) || !Array.isArray(lotsImportes)
       || !Array.isArray(ceImportes) || !Array.isArray(contoursImportes)
-      || !Array.isArray(versionsImportees)) {
+      || !Array.isArray(versionsImportees) || !Array.isArray(rapportsImportes)) {
     throw new Error("le fichier projet.json est incomplet.");
   }
   const idsLots = new Set(lotsImportes.map((l) => l.id));
@@ -350,7 +410,11 @@ async function importerProjet(fichierZip) {
     throw new Error("certaines photos renvoient à une remarque absente du fichier.");
   }
 
-  // Lecture des PDF AVANT la transaction : une transaction Dexie ne doit attendre que la base
+  // Lecture des fichiers AVANT la transaction : une transaction Dexie ne doit attendre que la base
+  delete projet.image;   // l'image n'est jamais dans projet.json, seulement dans projet/image.jpg
+  const fichierImage = zip.file("projet/image.jpg");
+  if (fichierImage) projet.image = new Blob([await fichierImage.async("blob")], { type: "image/jpeg" });
+
   const plansAImporter = [];
   for (const plan of plans) {
     const fichierPdf = zip.file(`plans/${plan.id}.pdf`);
@@ -408,6 +472,8 @@ async function importerProjet(fichierZip) {
     await db.ce.bulkAdd(ceImportes.map((c) => ({ ...c, projetId: projet.id })));
     await db.contours.bulkAdd(contoursImportes.map((c) => ({ ...c, projetId: projet.id })));
     await db.versionsPlan.bulkAdd(versionsAImporter);
+    // Une remarque supprimée depuis peut figurer dans un ancien rapport : sans conséquence
+    await db.rapports.bulkAdd(rapportsImportes.map((r) => ({ ...r, projetId: projet.id })));
   });
 
   alert(`Projet « ${projet.nom} » importé : ${plans.length} plan(s), ` +
@@ -429,7 +495,7 @@ async function supprimerProjet(projet) {
 // Toutes les tables qui contiennent des données d'un projet (pour les transactions)
 function tablesDuProjet() {
   return [db.projets, db.plans, db.remarques, db.photos, db.niveaux, db.locaux, db.lots, db.ce,
-    db.contours, db.versionsPlan];
+    db.contours, db.versionsPlan, db.rapports];
 }
 
 // Efface le contenu d'un projet (pas le projet lui-même). À appeler dans une transaction.
@@ -443,6 +509,7 @@ async function viderProjet(projetId) {
   await db.lots.where("projetId").equals(projetId).delete();
   await db.contours.where("projetId").equals(projetId).delete();
   await db.versionsPlan.where("projetId").equals(projetId).delete();
+  await db.rapports.where("projetId").equals(projetId).delete();
 }
 
 // ===================================================================
@@ -2416,6 +2483,8 @@ const POLICES_RAPPORT = {
   etiquette: "polices/dosis-400.ttf"
 };
 const ADRESSE_FONTKIT = "https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/+esm";
+const LOGO_RAPPORT = "icones/icone-512.png";
+const TAILLE_LOGO_PIED = 7 * POINTS_PAR_MM;   // logo au centre du pied de page
 
 el("ouvrirRapport").addEventListener("click", ouvrirRapport);
 
@@ -2432,9 +2501,43 @@ async function ouvrirRapport() {
   remplirLocauxRapport(champLocalRapport.value);
   remplirListe(champLotRapport, listesRapport.lots, (l) => `${l.numero} · ${l.nom}`, champLotRapport.value);
   remplirChapitresRapport(champChapitreRapport.value);
+  await afficherDernierRapport();
+  ajusterTriRapport();
   ficheRapport.returnValue = "";
   ficheRapport.showModal();
 }
+
+// ----- Dernier rapport produit : affiché dans la fenêtre, et annulable (rapport d'essai) -----
+async function dernierRapportDuProjet() {
+  const rapports = await db.rapports.where("projetId").equals(projetCourant.id).sortBy("numero");
+  return rapports[rapports.length - 1] || null;
+}
+
+async function afficherDernierRapport() {
+  const dernier = await dernierRapportDuProjet();
+  el("dernierRapport").hidden = !dernier;
+  if (dernier) {
+    el("texteDernierRapport").textContent =
+      `Dernier rapport : n° ${dernier.numero} du ${formaterDate(dernier.date)} (${dernier.remarques.length} remarque(s)).`;
+  }
+}
+
+// Seul le dernier rapport s'annule, pour que les n° restent dans l'ordre ; son n° sera réutilisé
+el("annulerDernierRapport").addEventListener("click", async () => {
+  const dernier = await dernierRapportDuProjet();
+  if (!dernier || !confirm(
+    `Annuler le rapport n° ${dernier.numero} du ${formaterDate(dernier.date)} ?\n\n` +
+    `Ses remarques ne compteront plus comme déjà rapportées (sauf celles d'un rapport précédent), ` +
+    `et le prochain rapport reprendra le n° ${dernier.numero}. ` +
+    `Le fichier PDF déjà enregistré sur l'appareil n'est pas effacé.`
+  )) return;
+  await db.transaction("rw", db.rapports, db.projets, async () => {
+    await db.rapports.delete(dernier.id);
+    await db.projets.update(projetCourant.id, { dernierRapport: dernier.numero - 1 });
+  });
+  projetCourant.dernierRapport = dernier.numero - 1;
+  await afficherDernierRapport();
+});
 
 // Comme dans la fiche : local réduit au niveau, chapitre réduit au lot (sans choix d'office :
 // un lot seul veut dire « tout le lot »)
@@ -2451,6 +2554,11 @@ function remplirChapitresRapport(ceId) {
 }
 
 champNiveauRapport.addEventListener("change", () => remplirLocauxRapport(null));
+// Le choix « tri » ne vaut que pour le rapport général
+function ajusterTriRapport() {
+  el("champTriRapport").disabled = el("champTypeRapport").value === "local";
+}
+el("champTypeRapport").addEventListener("change", ajusterTriRapport);
 champLotRapport.addEventListener("change", () => remplirChapitresRapport(null));
 
 ficheRapport.addEventListener("close", () => {
@@ -2462,6 +2570,9 @@ ficheRapport.addEventListener("close", () => {
     localId: champLocalRapport.value || null,
     lotId: champLotRapport.value || null,
     ceId: champChapitreRapport.value || null,
+    nouvellesDabord: el("champOrdreRapport").value === "nouvelles",   // sinon toutes ensemble
+    // Tri par local : rapport général seulement (le rapport par local l'est déjà)
+    triParLocal: el("champTypeRapport").value !== "local" && el("champTriRapport").value === "local",
     photos: champPhotosRapport.value              // « liste », « fin » ou « sans »
   });
 });
@@ -2489,6 +2600,51 @@ async function produireRapport(filtres) {
       alert("Aucune remarque ne correspond à ce choix.");
       return;
     }
+    // Tri par local (rapport général) : par niveau puis dans l'ordre de la liste des locaux, puis par
+    // n° ; une remarque sans local vient après les locaux de son niveau, sans niveau tout à la fin.
+    // Les groupes « nouvelles » et « rappel » gardent cet ordre.
+    if (filtres.triParLocal) {
+      const rangNiveau = new Map(listesRapport.niveaux.map((n, i) => [n.id, i]));
+      const rangLocal = new Map(listesRapport.locaux.map((l, i) => [l.id, i]));
+      const rang = (carte, id) => carte.has(id) ? carte.get(id) : Infinity;
+      choisies.sort((a, b) => (rang(rangNiveau, a.niveauId) - rang(rangNiveau, b.niveauId))
+        || (rang(rangLocal, a.localId) - rang(rangLocal, b.localId)) || (a.numero - b.numero));
+    }
+
+    // Rapports précédents : pour chaque remarque, le dernier rapport qui la contenait
+    const rapportsPrecedents = await db.rapports.where("projetId").equals(projetId).sortBy("numero");
+    const dernierRapportDe = new Map();
+    for (const rapport of rapportsPrecedents) {
+      for (const id of rapport.remarques) dernierRapportDe.set(id, rapport);
+    }
+    const projetAJour = await db.projets.get(projetId);
+    filtres.numeroRapport = (projetAJour.dernierRapport || 0) + 1;
+    filtres.nombreNouvelles = choisies.filter((r) => !dernierRapportDe.has(r.id)).length;
+    // « Nouvelles d'abord » : une remarque déjà rapportée est un rappel, listé après les nouvelles et
+    // sans ses photos
+    const estRappel = (r) => filtres.nouvellesDabord && dernierRapportDe.has(r.id);
+
+    // Découpe une liste (déjà par n°) en groupes : les nouvelles, puis les rappels groupés par rapport
+    // précédent, du plus récent au plus ancien, chacun précédé de sa note
+    const groupes = (liste) => {
+      if (!filtres.nouvellesDabord) return [{ note: null, remarques: liste }];
+      const resultat = [{ note: null, remarques: liste.filter((r) => !estRappel(r)) }];
+      const parRapport = new Map();
+      for (const r of liste.filter(estRappel)) {
+        const rapport = dernierRapportDe.get(r.id);
+        if (!parRapport.has(rapport)) parRapport.set(rapport, []);
+        parRapport.get(rapport).push(r);
+      }
+      const rapports = [...parRapport.keys()].sort((a, b) => b.numero - a.numero);
+      for (const rapport of rapports) {
+        resultat.push({
+          note: `Les remarques suivantes ont fait l'objet du rapport n° ${rapport.numero} du ` +
+            `${formaterDate(rapport.date)} et sont reprises à titre de rappel.`,
+          remarques: parRapport.get(rapport)
+        });
+      }
+      return resultat.filter((g) => g.remarques.length > 0);
+    };
     const plans = (await db.plans.where("projetId").equals(projetId).sortBy("nom"))
       .filter((p) => choisies.some((r) => r.planId === p.id));
 
@@ -2514,16 +2670,30 @@ async function produireRapport(filtres) {
       // texte, texteGras, titre, etiquette : polices intégrées au PDF (seulement les lettres utilisées)
       ...Object.fromEntries(await Promise.all(Object.entries(POLICES_RAPPORT).map(async ([role, chemin]) =>
         [role, await doc.embedFont(await (await fetch(chemin)).arrayBuffer(), { subset: true })]))),
+      // Logo RepeR du pied de page : l'icône PNG de l'application (512 px, nette à l'impression)
+      logo: await doc.embedPng(await (await fetch(LOGO_RAPPORT)).arrayBuffer()),
       page: null,
       y: 0,
       titreSuite: null,   // titre répété en haut des pages suivantes d'une liste
       plans: new Map(),   // PDF des plans déjà lus (planPourRapport)
       echelles: new Map() // échelle commune des locaux de chaque plan (echelleDesLocaux)
     };
-    const photosDans = (r) => filtres.photos === "liste" ? photosDe.get(r.id) || [] : [];
+    const photosDans = (r) => filtres.photos === "liste" && !estRappel(r) ? photosDe.get(r.id) || [] : [];
+    // Écrit une liste de remarques, groupe par groupe, avec la note devant chaque groupe de rappels
+    const ecrireListe = async (liste, lieuDe) => {
+      for (const groupe of groupes(liste)) {
+        if (groupe.note) {
+          placeRapport(mise, 36);
+          mise.y -= 8;
+          ecrireLignes(mise, groupe.note, { police: mise.etiquette, couleur: "--encre-douce" });
+          mise.y -= 6;
+        }
+        for (const r of groupe.remarques) await ligneRemarque(mise, r, lieuDe(r), chapitre(r), photosDans(r));
+      }
+    };
     const nomPlan = (plan) => plan.nom + (plan.nombreVersions ? " · indice " + lettreIndice(plan.nombreVersions + 1) : "");
 
-    pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe });
+    await pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe });
 
     // Rapport général : tous les plans. Par local : seulement pour les remarques sans local, à la fin.
     let plansEntiers = plans;
@@ -2539,7 +2709,7 @@ async function produireRapport(filtres) {
         const duLocal = choisies.filter((r) => r.localId === local.id);
         if (duLocal.length === 0) continue;
         const titre = [niveauDe.get(local.niveauId)?.nom, libelleLocal(local)].filter(Boolean).join(" · ");
-        await sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, chapitre, photosDans);
+        await sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, ecrireListe);
       }
       const sansLocal = choisies.filter((r) => !localDe.has(r.localId));
       plansEntiers = plans.filter((p) => sansLocal.some((r) => r.planId === p.id));
@@ -2555,23 +2725,38 @@ async function produireRapport(filtres) {
       nouvellePageRapport(mise);
       ecrireTitre(mise, nomPlan(plan) + suffixeListe, 16, true);
       mise.titreSuite = nomPlan(plan) + suffixeListe + " (suite)";
-      for (const r of duPlan) await ligneRemarque(mise, r, lieu(r), chapitre(r), photosDans(r));
+      await ecrireListe(duPlan, lieu);
       mise.titreSuite = null;
     }
 
-    if (filtres.photos === "fin" && choisies.some((r) => photosDe.has(r.id))) {
+    // Photos à la fin : celles des nouvelles remarques seulement (pas des rappels)
+    const avecPhotosFin = choisies.filter((r) => photosDe.has(r.id) && !estRappel(r));
+    if (filtres.photos === "fin" && avecPhotosFin.length > 0) {
       nouvellePageRapport(mise);
       ecrireTitre(mise, "Photos", 16, true);
       mise.titreSuite = "Photos (suite)";
-      for (const r of choisies) {
-        if (photosDe.has(r.id)) await photosEnFin(mise, r, lieu(r), photosDe.get(r.id));
-      }
+      for (const r of avecPhotosFin) await photosEnFin(mise, r, lieu(r), photosDe.get(r.id));
     }
 
     piedsDePage(mise);
     const resultat = await doc.save();
+
+    // Le rapport est mémorisé (n°, date, remarques) : le suivant saura lesquelles ont déjà été rapportées
+    await db.transaction("rw", db.rapports, db.projets, async () => {
+      await db.rapports.add({
+        id: crypto.randomUUID(),
+        projetId,
+        numero: filtres.numeroRapport,
+        date: aujourdhui(),
+        type: filtres.parLocal ? "local" : "general",
+        remarques: choisies.map((r) => r.id)
+      });
+      await db.projets.update(projetId, { dernierRapport: filtres.numeroRapport });
+    });
+    projetCourant.dernierRapport = filtres.numeroRapport;
+
     telecharger(new Blob([resultat], { type: "application/pdf" }),
-      nomDeFichier(`${projetCourant.nom} - rapport${filtres.parLocal ? " par local" : ""} ${aujourdhui()}`) + ".pdf");
+      nomDeFichier(`${projetCourant.nom} - rapport ${filtres.numeroRapport}${filtres.parLocal ? " par local" : ""} ${aujourdhui()}`) + ".pdf");
   } catch (erreur) {
     alert("Impossible de produire le rapport : " + erreur.message);
   } finally {
@@ -2581,24 +2766,45 @@ async function produireRapport(filtres) {
 }
 
 // ----- Page de garde : projet, date, choix des remarques, nombres, entreprises concernées -----
-function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }) {
+async function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }) {
   nouvellePageRapport(mise);
+  // Le tiers supérieur de la page est réservé à l'image du projet (vide s'il n'en a pas)
+  const basDuTiers = A4[1] * 2 / 3;
+  if (projetCourant.image) {
+    const image = await mise.doc.embedJpg(await projetCourant.image.arrayBuffer());
+    const largeurZone = A4[0] - 2 * MARGE;
+    const hauteurZone = mise.y - basDuTiers - 12;   // un peu d'air au-dessus du titre
+    const echelle = Math.min(largeurZone / image.width, hauteurZone / image.height);
+    const largeur = image.width * echelle;
+    const hauteur = image.height * echelle;
+    mise.page.drawImage(image, {
+      x: MARGE + (largeurZone - largeur) / 2, y: basDuTiers + 12 + (hauteurZone - hauteur) / 2,
+      width: largeur, height: hauteur
+    });
+  }
+  mise.y = basDuTiers;
   ecrireTitre(mise, "Rapport de chantier", 26, true);
 
   // Comme la fiche : étiquette noire à gauche, valeur à droite
   const ouvertes = choisies.filter((r) => r.statut === "ouverte").length;
   const levees = choisies.length - ouvertes;
+  const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  let texteNombre = `${pluriel(choisies.length, "remarque")} : ${pluriel(ouvertes, "ouverte")}, ${pluriel(levees, "levée")}`;
+  // Nouvelles = jamais présentes dans un rapport précédent (rien à préciser pour le premier rapport)
+  if (filtres.numeroRapport > 1) texteNombre += `, dont ${pluriel(filtres.nombreNouvelles, "nouvelle")}`;
   grilleRapport(mise, [
     ["projet", [{ texte: projetCourant.nom, gras: true }]],
     ["date", [{ texte: formaterDate(aujourdhui()) }]],
+    ["rapport", [{ texte: "n° " + filtres.numeroRapport }]],
     ["type", [{ texte: filtres.parLocal ? "Par local" : "Général" }]],
     ["remarques", [{ texte: filtres.seulementOuvertes ? "Ouvertes seulement" : "Toutes (ouvertes et levées)" }]],
     filtres.niveauId && ["niveau", [{ texte: niveauDe.get(filtres.niveauId).nom }]],
     filtres.localId && ["local", [{ texte: libelleLocal(localDe.get(filtres.localId)) }]],
     filtres.lotId && ["lot", [{ texte: libelleLot(lotDe.get(filtres.lotId)).replace(/^lot /, "") }]],
     filtres.ceId && ["chapitre", [{ texte: ceDe.get(filtres.ceId).nom }]],
-    ["nombre", [{ texte: `${choisies.length} remarque${choisies.length > 1 ? "s" : ""} : ` +
-      `${ouvertes} ouverte${ouvertes > 1 ? "s" : ""}, ${levees} levée${levees > 1 ? "s" : ""}` }]]
+    ["ordre", [{ texte: filtres.nouvellesDabord ? "Nouvelles remarques d'abord, puis rappel des précédentes" : "Toutes ensemble" }]],
+    !filtres.parLocal && ["tri", [{ texte: filtres.triParLocal ? "Par local" : "Par n°" }]],
+    ["nombre", [{ texte: texteNombre }]]
   ].filter(Boolean));
 
   // Légende des pastilles, sur une ligne
@@ -2634,22 +2840,34 @@ function pageDeGarde(mise, filtres, choisies, { niveauDe, localDe, lotDe, ceDe }
 
 // ----- Page d'un plan : le plan entier (vectoriel), avec les pastilles des remarques choisies -----
 // Page A4 en largeur ou en hauteur selon le plan.
+// Page A4 toujours en portrait (titre et pied de page à l'endroit). Un plan plus large que haut est
+// tourné d'un quart de tour vers la gauche pour occuper la page : son haut est à gauche, on le lit en
+// tournant la feuille vers la droite. Les n° des pastilles tournent avec lui.
 async function pageDuPlan(mise, plan, titre, duPlan) {
   const { vue } = await planPourRapport(mise, plan);
-  nouvellePageRapport(mise, vue.width > vue.height ? [A4[1], A4[0]] : A4);
+  const tourne = vue.width > vue.height;
+  nouvellePageRapport(mise);
   ecrireTitre(mise, titre, 16, true);
-  const largeurPage = mise.page.getWidth();
-  const largeurZone = largeurPage - 2 * MARGE;
+  const largeurZone = mise.page.getWidth() - 2 * MARGE;
   const hauteurZone = mise.y - MARGE - HAUTEUR_PIED;
-  const echelle = Math.min(largeurZone / vue.width, hauteurZone / vue.height);
+  // Taille du plan dans son propre sens (largeur = son côté horizontal à lui)
+  const echelle = tourne
+    ? Math.min(hauteurZone / vue.width, largeurZone / vue.height)
+    : Math.min(largeurZone / vue.width, hauteurZone / vue.height);
   const largeur = vue.width * echelle;
   const hauteur = vue.height * echelle;
-  const x = MARGE + (largeurZone - largeur) / 2;
-  const y = MARGE + HAUTEUR_PIED + (hauteurZone - hauteur) / 2;
+  // Cadre occupé sur la page (largeur et hauteur échangées si le plan est tourné)
+  const [largeurCadre, hauteurCadre] = tourne ? [hauteur, largeur] : [largeur, hauteur];
+  const x = MARGE + (largeurZone - largeurCadre) / 2;
+  const y = MARGE + HAUTEUR_PIED + (hauteurZone - hauteurCadre) / 2;
 
-  await dessinerVuePlan(mise, plan, PLAN_ENTIER, x, y, largeur, hauteur);
+  await dessinerVuePlan(mise, plan, PLAN_ENTIER, x, y, largeur, hauteur, tourne ? 90 : 0);
   for (const r of duPlan) {
-    dessinerPastillePdf(mise.page, mise.texteGras, x + r.x * largeur, y + (1 - r.y) * hauteur, PASTILLE_RAPPORT, r);
+    // Point du plan (en proportion) sur la page : tourné, le haut du plan est à gauche
+    const [px, py] = tourne
+      ? [x + r.y * largeurCadre, y + r.x * hauteurCadre]
+      : [x + r.x * largeur, y + (1 - r.y) * hauteur];
+    dessinerPastillePdf(mise.page, mise.texteGras, px, py, PASTILLE_RAPPORT, r, tourne ? 90 : 0);
   }
 }
 
@@ -2667,8 +2885,11 @@ async function planPourRapport(mise, plan) {
 // Dessine la partie « zone » du plan (en proportion, 0 à 1, comme à l'écran) dans le rectangle donné
 // (x, y : coin en bas à gauche, en points PDF). Le plan reste vectoriel ; s'il est protégé (chiffré),
 // pdf-lib ne peut pas le reprendre et la zone est mise en image (moins nette).
-async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur) {
+// (x, y) : coin bas gauche du cadre sur la page ; largeur et hauteur : taille du plan dans son propre
+// sens ; rotation : 0, ou 90 (plan tourné d'un quart de tour vers la gauche, cadre de hauteur × largeur)
+async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur, rotation = 0) {
   const infos = await planPourRapport(mise, plan);
+  const [largeurCadre, hauteurCadre] = rotation ? [hauteur, largeur] : [largeur, hauteur];
   const { pagePdfjs, vue } = infos;
   try {
     if (!infos.source) infos.source = await PDFDocument.load(infos.octets);
@@ -2678,11 +2899,17 @@ async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur) {
     const integree = await mise.doc.embedPage(infos.source.getPage(plan.page - 1),
       { left: Math.min(xa, xb), bottom: Math.min(ya, yb), right: Math.max(xa, xb), top: Math.max(ya, yb) });
     const echelle = largeur / (vue.rotation % 180 ? integree.height : integree.width);
-    const l = integree.width * echelle;    // taille avant rotation
-    const h = integree.height * echelle;
-    // La rotation se fait autour du point d'ancrage : on le choisit pour que la page tournée tombe dans la zone
-    const ancre = { 0: [x, y], 90: [x, y + l], 180: [x + l, y + h], 270: [x + h, y] }[vue.rotation];
-    mise.page.drawPage(integree, { x: ancre[0], y: ancre[1], xScale: echelle, yScale: echelle, rotate: degrees(-vue.rotation) });
+    // Rotation totale, vers la gauche : celle demandée, moins celle de la page PDF elle-même
+    const angle = ((rotation - vue.rotation) % 360 + 360) % 360;
+    // La rotation se fait autour du point d'ancrage : on le choisit pour que la page tournée tombe
+    // exactement dans le cadre
+    const ancre = {
+      0: [x, y],
+      90: [x + largeurCadre, y],
+      180: [x + largeurCadre, y + hauteurCadre],
+      270: [x, y + hauteurCadre]
+    }[angle];
+    mise.page.drawPage(integree, { x: ancre[0], y: ancre[1], xScale: echelle, yScale: echelle, rotate: degrees(angle) });
   } catch {
     const largeurZone = (zone.x1 - zone.x0) * vue.width;
     const hauteurZone = (zone.y1 - zone.y0) * vue.height;
@@ -2698,7 +2925,10 @@ async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur) {
     ctx.fillRect(0, 0, toile.width, toile.height);
     await pagePdfjs.render({ canvasContext: ctx, viewport: vueImage }).promise;
     const image = await mise.doc.embedJpg(await octetsJpeg(toile));
-    mise.page.drawImage(image, { x, y, width: largeur, height: hauteur });
+    // Tournée vers la gauche autour de son coin bas gauche : ancrée au coin bas droit du cadre
+    mise.page.drawImage(image, rotation
+      ? { x: x + largeurCadre, y, width: largeur, height: hauteur, rotate: degrees(90) }
+      : { x, y, width: largeur, height: hauteur });
   }
 }
 
@@ -2706,7 +2936,7 @@ async function dessinerVuePlan(mise, plan, zone, x, y, largeur, hauteur) {
 // (pastilles du local seulement), puis la liste de ses remarques -----
 // Chaque local commence sur une nouvelle page (il ne déborde sur la suivante que si ses remarques
 // l'imposent). Tous les locaux d'un même plan sont dessinés à la même échelle (`echelleDesLocaux`).
-async function sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, chapitre, photosDans) {
+async function sectionLocal(mise, titre, local, duLocal, plans, contours, nomPlan, ecrireListe) {
   nouvellePageRapport(mise);
   ecrireTitre(mise, titre, 16, true);
   for (const plan of plans.filter((p) => duLocal.some((r) => r.planId === p.id))) {
@@ -2741,7 +2971,7 @@ async function sectionLocal(mise, titre, local, duLocal, plans, contours, nomPla
 
   // Liste des remarques du local (le local est dans le titre : seul le chapitre est rappelé)
   mise.titreSuite = titre + " (suite)";
-  for (const r of duLocal) await ligneRemarque(mise, r, null, chapitre(r), photosDans(r));
+  await ecrireListe(duLocal, () => null);
   mise.titreSuite = null;
 }
 
@@ -2795,9 +3025,18 @@ async function ligneRemarque(mise, r, lieu, chapitre, photos) {
   ecrireNumero(mise, r, haut - 10.5);
   const droite = (r.statut === "levee" ? "levée" : "ouverte") + (r.date ? " · " + formaterDate(r.date) : "");
   const largeurDroite = mise.etiquette.widthOfTextAtSize(droite, 9.5);
-  const entete = [lieu, chapitre].filter(Boolean).join(" · ") || "—";
-  const enteteCourt = couperLignes(entete, mise.texteGras, 10.5, largeurTexte - largeurDroite - 12)[0] || "";
-  ecrireTexte(mise, enteteCourt, xTexte, haut - 10.5, 10.5, mise.texteGras);
+  // Deux colonnes, alignées d'une remarque à l'autre : le lieu (gras), puis le chapitre ; chacun coupé
+  // à sa largeur s'il est trop long
+  // (place réservée à droite : la plus longue mention possible, pour que la colonne ne bouge pas)
+  const dispo = largeurTexte - mise.etiquette.widthOfTextAtSize("ouverte · 00/00/0000", 9.5) - 12;
+  const xChapitre = xTexte + dispo / 2;
+  const premiereLigne = (texte, police, largeur) => couperLignes(texte, police, 10.5, largeur)[0] || "";
+  if (lieu || !chapitre) {
+    ecrireTexte(mise, premiereLigne(lieu || "—", mise.texteGras, xChapitre - xTexte - 8), xTexte, haut - 10.5, 10.5, mise.texteGras);
+  }
+  if (chapitre) {
+    ecrireTexte(mise, premiereLigne(chapitre, mise.texte, xTexte + dispo - xChapitre), xChapitre, haut - 10.5, 10.5, mise.texte);
+  }
   ecrireTexte(mise, droite, largeurPage - MARGE - largeurDroite, haut - 10.5, 9.5, mise.etiquette, "--encre-douce");
   mise.y = haut - 17;
   for (const ligne of lignes) {
@@ -2976,8 +3215,16 @@ function piedsDePage(mise) {
     const largeurPage = page.getWidth();
     const droite = `page ${i + 1} / ${pages.length}`;
     const options = { y: MARGE, size: 8.5, font: police, color: couleurPdf("--encre-douce") };
-    page.drawText(gauche, { ...options, x: MARGE });
+    // Texte de gauche coupé s'il atteindrait le logo (nom de projet très long)
+    const placeGauche = (largeurPage - TAILLE_LOGO_PIED) / 2 - MARGE - 8;
+    page.drawText(couperLignes(gauche, police, 8.5, placeGauche)[0] || "", { ...options, x: MARGE });
     page.drawText(droite, { ...options, x: largeurPage - MARGE - police.widthOfTextAtSize(droite, 8.5) });
+    // Logo au centre, centré en hauteur sur la ligne du texte
+    const milieuTexte = MARGE + police.heightAtSize(8.5, { descender: false }) / 2;
+    page.drawImage(mise.logo, {
+      x: (largeurPage - TAILLE_LOGO_PIED) / 2, y: milieuTexte - TAILLE_LOGO_PIED / 2,
+      width: TAILLE_LOGO_PIED, height: TAILLE_LOGO_PIED
+    });
   });
 }
 
