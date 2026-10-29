@@ -5,8 +5,8 @@
 
 // Même numéro que « ?v=N » dans index.html : l'augmenter à chaque modification du CSS ou du JS.
 // Un nouveau numéro = un nouveau cache ; l'ancien est effacé.
-const VERSION = 42;
-const NOM_CACHE = "suivi-chantier-" + VERSION;
+const VERSION = 43;
+const NOM_CACHE = "reper-" + VERSION;
 
 // Fichiers copiés dès l'installation, pour que tout marche hors ligne dès la visite suivante
 const FICHIERS = [
@@ -53,7 +53,9 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     for (const nom of await caches.keys()) {
-      if (nom.startsWith("suivi-chantier-") && nom !== NOM_CACHE) await caches.delete(nom);
+      // « suivi-chantier- » : caches d'avant le changement de nom de l'application
+      const nousAppartient = nom.startsWith("reper-") || nom.startsWith("suivi-chantier-");
+      if (nousAppartient && nom !== NOM_CACHE) await caches.delete(nom);
     }
     await self.clients.claim();   // prend aussi en charge la page déjà ouverte
 

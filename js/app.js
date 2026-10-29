@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 // ===== Base de données =====
 // Trois « tables ». Après « id », on liste les champs sur lesquels on fera des recherches.
-const db = new Dexie("suiviChantier");
+const db = new Dexie("reper");
 db.version(1).stores({
   projets: "id, nom",
   plans: "id, projetId, nom",
@@ -120,7 +120,7 @@ const PASTILLE_PDF_MIN = 5 * POINTS_PAR_MM;
 const PASTILLE_PDF_PROPORTION = 0.01;   // 1 % du plus grand côté du plan
 
 // Identifiant et version du format des fichiers d'export
-const FORMAT_EXPORT = "suivi-chantier";
+const FORMAT_EXPORT = "reper";
 // 2 : ajout des photos ; 3 : niveaux et locaux ; 4 : lots et CE ;
 // 5 : remarques liées à un niveau, un local, un lot et un CE, sans le champ « entreprise » ;
 // 6 : contours des locaux sur les plans ; 7 : anciennes versions des plans (indices) ;
@@ -349,12 +349,12 @@ async function importerProjet(fichierZip) {
   }
 
   const fichierJson = zip.file("projet.json");
-  if (!fichierJson) throw new Error("ce fichier n'est pas un export de Suivi chantier.");
+  if (!fichierJson) throw new Error("ce fichier n'est pas un export de RepeR.");
   const donnees = JSON.parse(await fichierJson.async("string"));
 
   // Vérifications : bon format, version connue, contenu complet
   if (donnees.format !== FORMAT_EXPORT) {
-    throw new Error("ce fichier n'est pas un export de Suivi chantier.");
+    throw new Error("ce fichier n'est pas un export de RepeR.");
   }
   // Versions acceptées : 1 (sans photos), 2 (avec photos), 3 (avec niveaux et locaux), 4 (avec lots et CE),
   // 5 (remarques liées aux niveaux, locaux, lots et CE), 6 (avec contours des locaux),

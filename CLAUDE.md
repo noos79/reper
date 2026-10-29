@@ -6,10 +6,12 @@ Application web de suivi de chantier pour un usage personnel en bureau d'archite
 Elle sert à pointer des remarques sur un plan PDF, à y joindre des photos annotées et à produire un rapport PDF.
 
 **Nom de l'application : RepeR** (décision du 26/10/2026) : nom et nom court du manifeste, titre de la
-page. Les **noms techniques restent « suivi-chantier »** et ne doivent pas changer : dépôt GitHub et
-adresse GitHub Pages (l'application installée et ses données y sont liées), base IndexedDB
-`suiviChantier` (les données des appareils), format d'export `suivi-chantier` (anciens fichiers .zip),
-préfixe des caches de `sw.js` (le nettoyage des anciens caches s'en sert).
+page. **Noms techniques : `reper`** (minuscules, décision du 29/10/2026, faute de données réelles à
+garder) : dépôt GitHub et adresse GitHub Pages, base IndexedDB `reper`, format d'export `reper`,
+préfixe des caches de `sw.js`. Ils ne doivent plus changer : l'application installée et ses données
+sont liées à l'adresse, les données des appareils au nom de la base, les fichiers .zip au format, et le
+nettoyage des anciens caches au préfixe. Les anciens noms (`suivi-chantier`, `suiviChantier`) ne sont
+plus reconnus, sauf pour effacer les anciens caches.
 
 Le propriétaire du projet (Niko) a des bases très légères en programmation. L'objectif de ce dépôt est
 d'obtenir rapidement une application qui fonctionne ; l'apprentissage se fait ailleurs. Mais chaque
@@ -45,7 +47,7 @@ signalée si elle alourdit la saisie.
   - pdf-lib `pdf-lib@1.17.1` (`dist/pdf-lib.esm.min.js` : plan annoté et rapport en PDF)
   - fontkit `@pdf-lib/fontkit@1.1.1` (polices de la charte dans le rapport ; gros fichier, chargé
     seulement au premier rapport par `import()`)
-- Hébergement : GitHub Pages (`https://<compte>.github.io/suivi-chantier/`).
+- Hébergement : GitHub Pages (`https://<compte>.github.io/reper/`).
 - Tests en local avec l'extension VS Code Live Server.
 - Structure : `index.html`, `css/charte.css`, `css/style.css`, `js/app.js`, `polices/`,
   `manifest.webmanifest`, `sw.js` (service worker, à la racine pour couvrir tout le site), `icones/`.
@@ -65,7 +67,7 @@ signalée si elle alourdit la saisie.
 
 ## Données
 
-Base IndexedDB `suiviChantier`, via Dexie :
+Base IndexedDB `reper`, via Dexie :
 
 ```
 projets:   "id, nom"            // id, nom, creeLe, dernierNumero, dernierRapport (n° du dernier rapport produit),
@@ -167,7 +169,7 @@ Décisions à respecter :
   ancien rapport : sans conséquence. **Annulation** (rapport d'essai) : la fenêtre « Rapport » affiche
   le dernier rapport produit et « annuler ce rapport » ; seul le **dernier** s'annule (on peut répéter),
   `dernierRapport` redescend et son n° est réutilisé ; le PDF déjà téléchargé reste sur l'appareil.
-- Export `.zip` : `projet.json` (format `suivi-chantier`, **version 9**, avec `niveaux`, `locaux`, `lots`,
+- Export `.zip` : `projet.json` (format `reper`, **version 9**, avec `niveaux`, `locaux`, `lots`,
   `ce`, `contours`, `versions` et `rapports` ; remarques avec leurs liens) +
   `plans/<id>.pdf` + `photos/<id>.jpg` + `versions/<id>.pdf`. L'import accepte les versions 1 (sans photos), 2 (sans locaux),
   3 (sans lots), 4 (remarques avec le champ `entreprise`, retiré à l'import), 5 (sans contours), 6 (sans
@@ -353,7 +355,7 @@ Fait :
 5. Enregistrement sur l'appareil ; écrans Projets / Projet / Plan.
 6. **Export et import d'un projet** (fichier `.zip` : `projet.json` + `plans/<id>.pdf`). L'import
    **remplace** un projet existant (reconnu par son `id`, pas par son nom) après confirmation, sans
-   fusion. Format versionné (`format: "suivi-chantier"`, `version: 1`).
+   fusion. Format versionné (`format`, `version: 1` ; nom du format `reper` depuis le 29/10/2026).
 7. Photos sur les remarques, avec annotation à main levée (trait rouge au doigt, annuler le dernier trait),
    ajoutées à l'export (format d'export version 2).
 8. Application installable et hors ligne (manifeste web, service worker, icônes), bouton « installer »,
