@@ -217,8 +217,14 @@ Décisions à respecter :
    - **Intervenants** (`ecranIntervenants`, retour vers Lots) : par lot, « entreprise du lot » puis chaque
      CE avec son sous-traitant ; « modifier » demande le nom puis l'adresse électronique.
 3. **Plan** : affichage du PDF (page 1), zoom (jusqu'à `ZOOM_MAX` = 10 fois ; molette : `PAS_MOLETTE`), appui long (600 ms) pour poser une remarque, pastilles
-   cliquables ouvrant la fiche remarque (`<dialog>`). En-tête toujours sur une ligne : « contours »,
-   « recadrer » (remet le plan en entier dans la zone visible, barre des contours comprise).
+   cliquables ouvrant la fiche remarque (`<dialog>`). En-tête toujours sur une ligne : « liste »,
+   « contours », « recadrer » (remet le plan en entier dans la zone visible, barre des contours comprise).
+   - **Liste des remarques** (bouton « liste », enfoncé = affichée) : panneau à droite du plan
+     (`panneauRemarques`), par n° : rond de la couleur du statut avec le n°, puis la description sur
+     **deux lignes au plus** (« … » au-delà). Toucher une ligne ouvre la fiche (sauf pendant un
+     déplacement de pastille ou en mode contours). Cachée au
+     départ ; le choix reste valable d'un plan à l'autre jusqu'à la fermeture de l'application. Mise à
+     jour par `dessinerPastilles`. Pas de liste sur une ancienne version (pastilles copiées sans texte).
    - **Mode contours** (bouton « contours », qui sert aussi à en sortir, comme « terminé ») : barre en
      bas (`barreContours`) avec une aide, la liste des locaux (ceux du niveau du plan, sinon tous,
      groupés par niveau ; « ✓ » = déjà dessiné sur ce plan), « annuler le point » (pendant le dessin),

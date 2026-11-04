@@ -1363,6 +1363,9 @@ async function ouvrirPlan(plan, version = null) {
   versionConsultee = version;
   el("titrePlan").textContent = version ? `${plan.nom} · indice ${version.indice}` : plan.nom;
   el("modeContours").hidden = Boolean(version);   // pas de contours sur une ancienne version
+  // Pas de liste sur une ancienne version : ses pastilles copiées n'ont pas de texte
+  el("boutonListe").hidden = Boolean(version);
+  panneauRemarques.hidden = Boolean(version) || !listeAffichee;
 
   quitterModeContours();
   finirDeplacement();
@@ -2434,6 +2437,48 @@ function dessinerPastilles() {
     if (versionConsultee) pastille.classList.add("consultation");
     else pastille.addEventListener("click", () => ouvrirFiche(r, false));
     contenu.appendChild(pastille);
+  }
+  remplirListePanneau();   // la liste de droite suit toujours les pastilles
+}
+
+// ----- Liste des remarques à droite du plan -----
+// Aperçu rapide sans ouvrir la fiche : n° (rond de la couleur du statut) et description, sur deux
+// lignes au plus (« … » au-delà, réglé dans style.css). Affichée ou cachée par le bouton « liste » ;
+// le choix reste valable d'un plan à l'autre jusqu'à la fermeture de l'application (cachée au départ,
+// car elle prend trop de place sur un téléphone).
+const panneauRemarques = el("panneauRemarques");
+let listeAffichee = false;
+
+el("boutonListe").addEventListener("click", () => {
+  listeAffichee = !listeAffichee;
+  panneauRemarques.hidden = !listeAffichee;
+  el("boutonListe").setAttribute("aria-pressed", String(listeAffichee));
+  // La zone du plan a changé de largeur : on redessine net la partie maintenant visible
+  clearTimeout(minuteurNettete);
+  minuteurNettete = setTimeout(dessinerZoneNette, DELAI_NETTETE);
+});
+
+function remplirListePanneau() {
+  const liste = el("listePanneau");
+  liste.replaceChildren();
+  const triees = [...remarques].sort((a, b) => a.numero - b.numero);
+  for (const r of triees) {
+    const ligne = document.createElement("li");
+    const numero = document.createElement("span");
+    numero.className = "numero " + r.statut;
+    numero.textContent = r.numero;
+    const texte = document.createElement("span");
+    texte.className = "texte";
+    texte.textContent = r.texte || "(sans description)";
+    if (!r.texte) texte.classList.add("vide");
+    ligne.append(numero, texte);
+    // Toucher la ligne ouvre la fiche, comme la pastille (sauf pendant un déplacement ou le dessin
+    // des contours : les pastilles ne réagissent pas non plus)
+    ligne.addEventListener("click", () => {
+      if (remarqueADeplacer || modeContours) return;
+      ouvrirFiche(r, false);
+    });
+    liste.appendChild(ligne);
   }
 }
 

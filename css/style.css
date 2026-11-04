@@ -90,8 +90,16 @@ header .bouton { white-space: nowrap; }
 .bouton[hidden] { display: none; }   /* sinon « display: inline-flex » l'emporterait sur hidden */
 
 /* ===== Plan ===== */
+/* Le plan à gauche, la liste des remarques à droite (quand elle est affichée) */
+#zonePlan {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 #cadrePlan {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   touch-action: none;
   display: flex;
@@ -263,6 +271,72 @@ header .bouton { white-space: nowrap; }
 .pastille.ouverte { background: var(--statut-ouverte); }
 .pastille.levee   { background: var(--statut-levee); }
 .pastille.consultation { cursor: default; }   /* ancienne version : pastille sans fiche */
+
+/* ===== Liste des remarques à droite du plan (bouton « liste ») ===== */
+/* Bouton « liste » enfoncé (liste affichée) : pastille noire pleine */
+#boutonListe[aria-pressed="true"] {
+  background: var(--bouton-fond);
+  color: var(--bouton-texte);
+}
+
+#panneauRemarques {
+  width: min(300px, 45vw);
+  flex: none;
+  overflow-y: auto;          /* la liste défile si elle est plus haute que l'écran */
+  border-left: 1px solid var(--trait);
+  background: var(--surface);
+}
+
+#panneauRemarques[hidden] { display: none; }
+
+#listePanneau {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#listePanneau li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--trait);
+  cursor: pointer;   /* toucher la ligne ouvre la fiche */
+}
+
+/* Au toucher : fond turquoise clair, pour confirmer l'appui */
+#listePanneau li:active { background: var(--selection); }
+
+/* N° de la remarque : même rond que la pastille du plan, couleur du statut, chiffres noirs */
+#listePanneau .numero {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--encre);
+  font: var(--graisse-titre) 13px var(--police-texte);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#listePanneau .numero.ouverte { background: var(--statut-ouverte); }
+#listePanneau .numero.levee   { background: var(--statut-levee); }
+
+/* Texte de la remarque : deux lignes au plus, terminé par « … » s'il est plus long */
+#listePanneau .texte {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;   /* un mot très long est coupé plutôt que de déborder */
+  line-height: 1.3;
+}
+
+#listePanneau .texte.vide { color: var(--encre-douce); }   /* remarque sans description */
 
 /* ===== Fiche remarque et fenêtre « plan » (niveau et lot) ===== */
 /* « :is(#fiche, #fichePlan, #ficheCadrage, #ficheLocaux, #ficheRapport) » : la même règle vaut pour ces fenêtres */
