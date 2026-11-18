@@ -227,10 +227,14 @@ Décisions à respecter :
      jour par `dessinerPastilles`. Pas de liste sur une ancienne version (pastilles copiées sans texte).
    - **Mode contours** (bouton « contours », qui sert aussi à en sortir, comme « terminé ») : barre en
      bas (`barreContours`) avec une aide, la liste des locaux (ceux du niveau du plan, sinon tous,
-     groupés par niveau ; « ✓ » = déjà dessiné sur ce plan), « annuler le point » (pendant le dessin),
+     groupés par niveau ; « ✓ » = déjà dessiné sur ce plan ; les locaux d'un autre niveau qui ont un
+     contour sur ce plan sont listés à part, groupe « autre niveau », pour pouvoir l'effacer ; hors
+     dessin, une touche brève sur le n° d'un local sur le plan le choisit dans la liste), « annuler le point » (pendant le dessin),
      « effacer le contour » (local déjà dessiné), « terminé ». L'application propose le premier local
      sans contour ; une touche brève pose un coin (glisser déplace le plan, l'appui long ne pose pas de
-     remarque) ; toucher à nouveau le premier coin (à `DISTANCE_FERMETURE` près, 3 coins au moins) ferme
+     remarque) ; **accroche orthogonale** (`accrocher`) : un côté à `ANGLE_ACCROCHE` (10°) près de
+     l'horizontale ou de la verticale de l'écran est redressé, et l'autre coordonnée s'aligne sur le
+     premier coin à `DISTANCE_ACCROCHE` pixels près (dernier côté droit) ; toucher à nouveau le premier coin (à `DISTANCE_FERMETURE` près, 3 coins au moins) ferme
      et enregistre le contour, puis passe au local suivant sans contour. **Local déjà dessiné choisi** :
      son contour est mis en évidence et ses coins deviennent des poignées à **faire glisser** (enregistré
      au lâcher ; une touche brève sur un coin commence un nouveau contour) ; redessiner entièrement

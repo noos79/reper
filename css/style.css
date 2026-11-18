@@ -201,6 +201,13 @@ header .bouton { white-space: nowrap; }
   white-space: nowrap;
 }
 
+/* Hors dessin, toucher le n° d'un local le choisit dans la liste (pendant le dessin, il laisse
+   passer le toucher pour qu'on puisse poser un coin en dessous) */
+.nomContour.touchable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 /* Coins d'un contour existant, à faire glisser : plus gros, pour le doigt */
 .coinContour.poignee {
   width: 22px;

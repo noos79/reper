@@ -105,6 +105,8 @@ const PIXELS_MAX = 16_000_000;
 const DUREE_APPUI_LONG = 600;
 const TOLERANCE_MOUVEMENT = 10;
 const DISTANCE_FERMETURE = 24;     // pixels à l'écran : toucher aussi près du premier coin ferme le contour
+const ANGLE_ACCROCHE = 10;         // degrés : un côté presque horizontal ou vertical est redressé
+const DISTANCE_ACCROCHE = 15;      // pixels à l'écran : un coin presque aligné sur le premier coin s'y aligne
 
 // Photos : réduites à l'ajout pour ne pas alourdir la base et les exports
 const PHOTO_COTE_MAX = 1600;        // pixels, sur le plus grand côté
@@ -1516,7 +1518,7 @@ el("modeContours").addEventListener("click", () => {
 el("finContours").addEventListener("click", quitterModeContours);
 
 function entrerModeContours() {
-  if (locauxDuPlan().length === 0) {
+  if (locauxDuPlan().length === 0 && contoursPlan.length === 0) {   // des contours à effacer : on entre quand même
     alert(planCourant.niveauId
       ? "Le niveau de ce plan n'a pas de locaux. Vérifie la liste des locaux du projet."
       : "Ce projet n'a pas encore de locaux. Importe-les d'abord (écran Projet, bouton « locaux »).");
@@ -1584,6 +1586,19 @@ function remplirChoixLocal(localId) {
       groupe.append(new Option((dessines.has(local.id) ? "✓ " : "") + libelleLocal(local), local.id));
     }
   }
+  // Contours de locaux d'un autre niveau que celui du plan (dessinés avant que le plan soit lié à son
+  // niveau, ou par erreur) : listés à part pour pouvoir les choisir et les effacer
+  const proposes = new Set(locauxDuPlan().map((l) => l.id));
+  const horsNiveau = locauxProjet.filter((l) => dessines.has(l.id) && !proposes.has(l.id));
+  if (horsNiveau.length > 0) {
+    const groupe = document.createElement("optgroup");
+    groupe.label = "autre niveau";
+    for (const local of horsNiveau) {
+      const niveau = niveauxProjet.find((n) => n.id === local.niveauId);
+      groupe.append(new Option("✓ " + [niveau?.nom, libelleLocal(local)].filter(Boolean).join(" · "), local.id));
+    }
+    choixLocalContour.append(groupe);
+  }
   choixLocalContour.value = localId || "";
 }
 
@@ -1625,8 +1640,34 @@ async function ajouterCoin(clientX, clientY) {
       return;
     }
   }
-  coinsEnCours.push([arrondi(x), arrondi(y)]);
+  const [xAccroche, yAccroche] = accrocher(x, y, rect);
+  coinsEnCours.push([arrondi(xAccroche), arrondi(yAccroche)]);
   dessinerContours();
+}
+
+// Accroche orthogonale : si le côté depuis le coin précédent est presque horizontal (ou vertical),
+// à ANGLE_ACCROCHE degrés près, le nouveau coin est mis exactement à la même hauteur (ou à l'aplomb).
+// L'autre coordonnée s'aligne en plus sur le premier coin si elle en est proche (DISTANCE_ACCROCHE),
+// pour que le dernier côté, qui revient au premier coin, soit lui aussi droit.
+// Les angles se mesurent à l'écran (en pixels), pas en proportion : sinon un plan plus large que haut
+// fausserait les angles.
+function accrocher(x, y, rect) {
+  if (coinsEnCours.length === 0) return [x, y];
+  const [precX, precY] = coinsEnCours[coinsEnCours.length - 1];
+  const [premierX, premierY] = coinsEnCours[0];
+  const dx = (x - precX) * rect.width;
+  const dy = (y - precY) * rect.height;
+  const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);   // 0 à 180°
+  const presDuPremier = (a, b, taille) => Math.abs(a - b) * taille <= DISTANCE_ACCROCHE;
+
+  if (angle <= ANGLE_ACCROCHE || angle >= 180 - ANGLE_ACCROCHE) {        // presque horizontal
+    y = precY;
+    if (coinsEnCours.length >= 2 && presDuPremier(x, premierX, rect.width)) x = premierX;
+  } else if (Math.abs(angle - 90) <= ANGLE_ACCROCHE) {                    // presque vertical
+    x = precX;
+    if (coinsEnCours.length >= 2 && presDuPremier(y, premierY, rect.height)) y = premierY;
+  }
+  return [x, y];
 }
 
 async function enregistrerContour() {
@@ -1671,7 +1712,7 @@ boutonAnnulerPoint.addEventListener("click", () => {
 boutonEffacerContour.addEventListener("click", async () => {
   const contour = contoursPlan.find((c) => c.localId === choixLocalContour.value);
   const local = locauxProjet.find((l) => l.id === choixLocalContour.value);
-  if (!contour || !confirm(`Effacer le contour du local ${libelleLocal(local)} sur ce plan ?`)) return;
+  if (!contour || !confirm(`Es-tu sûr de vouloir supprimer le contour du local ${libelleLocal(local)} sur ce plan ?\n\nTu pourras le redessiner ensuite.`)) return;
   await db.contours.delete(contour.id);
   locauxTouches.add(contour.localId);
   contoursPlan = contoursPlan.filter((c) => c !== contour);
@@ -1704,6 +1745,10 @@ function dessinerContours() {
     nom.className = "nomContour";
     nom.textContent = local ? local.numero : "?";
     placer(nom, [moyenne(contour.points, 0), moyenne(contour.points, 1)]);
+    if (coinsEnCours.length === 0) {   // pas pendant le dessin : on pourrait vouloir poser un coin dessous
+      nom.classList.add("touchable");
+      choisirParLeNumero(nom, contour.localId);
+    }
     contenu.append(nom);
 
     // Contour du local choisi : mis en évidence, avec ses coins à faire glisser
@@ -1731,6 +1776,23 @@ function dessinerContours() {
       contenu.append(coin);
     });
   }
+}
+
+// Une touche brève sur le n° d'un local le choisit dans la liste du bas : son contour est mis en
+// évidence et on peut le modifier ou l'effacer. Glisser depuis le n° déplace le plan, comme ailleurs.
+function choisirParLeNumero(nom, localId) {
+  let depart = null;
+  nom.addEventListener("pointerdown", (e) => {
+    depart = e.isPrimary ? { x: e.clientX, y: e.clientY } : null;
+  });
+  nom.addEventListener("pointerup", (e) => {
+    if (!depart || !e.isPrimary) return;
+    const glisse = Math.hypot(e.clientX - depart.x, e.clientY - depart.y) > TOLERANCE_MOUVEMENT;
+    depart = null;
+    if (glisse || choixLocalContour.value === localId) return;
+    choixLocalContour.value = localId;
+    dessinerContours();
+  });
 }
 
 // Fait glisser un coin d'un contour existant ; le contour est enregistré quand on lâche.
